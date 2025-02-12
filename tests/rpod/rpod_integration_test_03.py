@@ -121,7 +121,7 @@ class KeepOutZoneChecks(unittest.TestCase):
             # logging.info('n_strikes ' + str(n_strikes))
 
             # Assert that it matches the expected value.
-            print(type(expected_strikes[n_firing]), expected_strikes[n_firing])
+            # print(type(expected_strikes[n_firing]), expected_strikes[n_firing])
             self.assertEqual(n_strikes, expected_strikes[n_firing])
             self.assertEqual(n_cum_strikes, expected_cum_strikes[n_firing])
 
