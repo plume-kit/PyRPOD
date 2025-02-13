@@ -682,6 +682,68 @@ class RPOD (MissionPlanner):
 
         return thrusters, vv_pos, vv_orientation
 
+    def set_plume_strike_fields(self, target):
+            # reset strikes for each firing
+            strikes = np.zeros(len(target.vectors))
+
+            if self.config['pm']['kinetics'] != 'None':
+                # reset pressures for each firing
+                pressures = np.zeros(len(target.vectors))
+
+                # reset shear pressures for each firing
+                shear_stresses = np.zeros(len(target.vectors))
+
+                # reset heat fluxes for each firing
+                heat_flux = np.zeros(len(target.vectors))
+                heat_flux_load = np.zeros(len(target.vectors))
+                return strikes, pressures, shear_stresses, heat_flux, heat_flux_load
+            else:
+                return strikes
+    
+    def set_plume_transformations(self, thruster_id, vv_orientation, vv_pos):
+        # Load data to calculate plume transformations
+
+        # First, according to DCM and exit vector using current thruster id in TCD
+        thruster_orientation = np.array(
+            self.vv.thruster_data[thruster_id]['dcm']
+        ).transpose()
+
+        thruster_orientation =  thruster_orientation.dot(vv_orientation)
+        # print('DCM: ', self.vv.thruster_data[thruster_id]['dcm'])
+        # print('DCM: ', thruster_orientation[0], thruster_orientation[1], thruster_orientation[2])
+        plume_normal = np.array(thruster_orientation[0])
+        # print("plume normal: ", plume_normal)
+        
+        # calculate thruster exit coordinate with respect to the Target Vehicle.
+        
+        # print(self.vv.thruster_data[thruster_id])
+        thruster_pos = vv_pos + np.array(self.vv.thruster_data[thruster_id]['exit'])
+        thruster_pos = thruster_pos[0]
+        # print('thruster position', thruster_pos)
+
+        return plume_normal, thruster_pos, thruster_orientation
+
+    def set_face_centroid(self, face):
+        # Calculate centroid for face
+
+        x = np.array(face[0]).mean()
+        y = np.array(face[1]).mean()
+        z = np.array(face[2]).mean()
+
+        centroid = np.array([x, y, z])
+
+        return centroid
+
+    def set_face_distance(self, thruster_pos, centroid):
+        # Calculate distance vector between face centroid and thruster exit.
+        distance = thruster_pos - centroid
+        # print('distance vector', distance)
+        norm_distance  = np.sqrt(distance[0]**2 + distance[1]**2 + distance[2]**2)
+
+        unit_distance = distance / norm_distance
+        # print('distance magnitude', norm_distance)
+
+        return distance, norm_distance, unit_distance
 
     def jfh_plume_strikes(self):
         """
@@ -728,22 +790,13 @@ class RPOD (MissionPlanner):
 
             # Extract firing data
             thrusters, vv_pos, vv_orientation = self.extract_firing_data(firing)
-
-            # reset strikes for each firing
-            strikes = np.zeros(len(target.vectors))
-
             firing_time = float(self.jfh.JFH[firing]['t'])
+
+            # set plume strike fields
             if self.config['pm']['kinetics'] != 'None':
-                # reset pressures for each firing
-                pressures = np.zeros(len(target.vectors))
-
-                # reset shear pressures for each firing
-                shear_stresses = np.zeros(len(target.vectors))
-
-                # reset heat fluxes for each firing
-                heat_flux = np.zeros(len(target.vectors))
-                heat_flux_load = np.zeros(len(target.vectors))
-
+                strikes, pressures, shear_stresses, heat_flux, heat_flux_load = self.set_plume_strike_fields(target)
+            else:
+                strikes = self.set_plume_strike_fields(target)
 
             # Calculate strikes for active thrusters. 
             for thruster in thrusters:
@@ -754,26 +807,8 @@ class RPOD (MissionPlanner):
                 # print('thruster num', thruster, 'thruster id', link[str(thruster)][0])
                 thruster_id = link[str(thruster)][0]
 
-
                 # Load data to calculate plume transformations
-                
-                # First, according to DCM and exit vector using current thruster id in TCD
-                thruster_orientation = np.array(
-                    self.vv.thruster_data[thruster_id]['dcm']
-                ).transpose()
-
-                thruster_orientation =   thruster_orientation.dot(vv_orientation)
-                # print('DCM: ', self.vv.thruster_data[thruster_id]['dcm'])
-                # print('DCM: ', thruster_orientation[0], thruster_orientation[1], thruster_orientation[2])
-                plume_normal = np.array(thruster_orientation[0])
-                # print("plume normal: ", plume_normal)
-                
-                # calculate thruster exit coordinate with respect to the Target Vehicle.
-                
-                # print(self.vv.thruster_data[thruster_id])
-                thruster_pos = vv_pos + np.array(self.vv.thruster_data[thruster_id]['exit'])
-                thruster_pos = thruster_pos[0]
-                # print('thruster position', thruster_pos)
+                plume_normal, thruster_pos, thruster_orientation = self.set_plume_transformations(thruster_id, vv_orientation, vv_pos)
 
                 # Calculate plume strikes for each face on the Target surface.
                 for i, face in enumerate(target.vectors):
@@ -782,20 +817,9 @@ class RPOD (MissionPlanner):
                     # Calculate centroid for face
                     # Transposed data is convienient to calculate averages
                     face = np.array(face).transpose()
+                    centroid = self.set_face_centroid(face)
 
-                    x = np.array(face[0]).mean()
-                    y = np.array(face[1]).mean()
-                    z = np.array(face[2]).mean()
-
-                    centroid = np.array([x, y, z])
-
-                    # Calculate distance vector between face centroid and thruster exit.
-                    distance = thruster_pos - centroid
-                    # print('distance vector', distance)
-                    norm_distance  = np.sqrt(distance[0]**2 + distance[1]**2 + distance[2]**2)
-
-                    unit_distance = distance / norm_distance
-                    # print('distance magnitude', norm_distance)
+                    distance, norm_distance, unit_distance = self.set_face_distance(thruster_pos, centroid)
 
 
                     # Calculate angle between distance vector from plume center line.
