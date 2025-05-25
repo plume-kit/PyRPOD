@@ -50,7 +50,7 @@ class ThrustEnvelopeChecks(unittest.TestCase):
         # Read in flight data and plot delta mass contoured for various Δv requirements.
         mp = MissionPlanner.MissionPlanner(case_dir)
         mp.set_lm(lm)
-        mp.read_flight_plan()
+        mp.flight_eval.read_flight_plan(lm)
         # mp.plot_thrust_envelope()
         
 

@@ -38,8 +38,8 @@ class OneDimRotApproach(unittest.TestCase):
         # Calculate simple 1D flight performance
         mp = MissionPlanner.MissionPlanner(case_dir)
         mp.set_lm(lm)
-        mp.read_flight_plan()
-        mp.calc_flight_performance()
+        mp.flight_eval.read_flight_plan(lm)
+        mp.flight_eval.calc_flight_performance()
         
 
 if __name__ == '__main__':
