@@ -51,7 +51,7 @@ class DeltaMassChecks(unittest.TestCase):
 
         mp = MissionPlanner.MissionPlanner(case_dir)
         mp.set_lm(lm)
-        mp.read_flight_plan()
+        mp.flight_eval.read_flight_plan(lm)
 
         # mp.plot_delta_mass(1885)
         

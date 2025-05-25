@@ -39,7 +39,7 @@ class BurnTimeContourChecks(unittest.TestCase):
         # Graph is contoured according to various ISP values.
         mp = MissionPlanner.MissionPlanner(case_dir)
         mp.set_lm(lm)
-        mp.read_flight_plan()
+        mp.flight_eval.read_flight_plan(lm)
         # mp.plot_burn_time_contour(1194)
 
 if __name__ == '__main__':
