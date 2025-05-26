@@ -128,8 +128,8 @@ class RPOD (MissionPlanner):
         """
             Creates visualization data for initiial configuration of RPOD analysis.
 
-            NOTE: Method does not take any parameters. It assumes that self.case_dir
-            and self.config are instatiated correctly. Potential defensive programming statements?
+            NOTE: Method does not take any parameters. It assumes that self.environment.case_dir
+            and self.environment.config are instatiated correctly. Potential defensive programming statements?
 
             TODO: Needs to be re-factored to save VTK data in proper case directory.
 
@@ -172,8 +172,8 @@ class RPOD (MissionPlanner):
         """
             Creates visualization data for initiial configuration of RPOD analysis.
 
-            NOTE: Method does not take any parameters. It assumes that self.case_dir
-            and self.config are instatiated correctly. Potential defensive programming statements?
+            NOTE: Method does not take any parameters. It assumes that self.environment.case_dir
+            and self.environment.config are instatiated correctly. Potential defensive programming statements?
 
             TODO: Needs to be re-factored to save VTK data in proper case directory.
 
@@ -278,7 +278,7 @@ class RPOD (MissionPlanner):
         for cluster in clusters_list:
 
             # Load plume STL in initial configuration. 
-            clusterMesh = mesh.Mesh.from_file(self.case_dir + 'stl/' + self.config['vv']['stl_cluster'])
+            clusterMesh = mesh.Mesh.from_file(self.environment.case_dir + 'stl/' + self.environment.config['vv']['stl_cluster'])
 
             # Transform cluster
 
@@ -327,7 +327,7 @@ class RPOD (MissionPlanner):
             i = i + 1
         
         # Create results directory if it doesn't already exist.
-        results_dir = self.case_dir + 'results'
+        results_dir = self.environment.case_dir + 'results'
         if not os.path.isdir(results_dir):
             # print("results dir doesn't exist")
             os.mkdir(results_dir)
@@ -361,7 +361,7 @@ class RPOD (MissionPlanner):
             # print("thrusters", thrusters)
              
             # Load, transform, and, graph STLs of visiting vehicle.  
-            VVmesh = mesh.Mesh.from_file(self.case_dir + 'stl/' + self.config['vv']['stl_lm'])
+            VVmesh = mesh.Mesh.from_file(self.environment.case_dir + 'stl/' + self.environment.config['vv']['stl_lm'])
             vv_orientation = np.array(self.jfh.JFH[firing]['dcm'])
             # print(vv_orientation.transpose())
             VVmesh.rotate_using_matrix(vv_orientation.transpose())
@@ -383,7 +383,7 @@ class RPOD (MissionPlanner):
                 thruster_id = link[str(thruster)][0]
 
                 # Load plume STL in initial configuration. 
-                plumeMesh = mesh.Mesh.from_file(self.case_dir + 'stl/' + self.config['vv']['stl_thruster'])
+                plumeMesh = mesh.Mesh.from_file(self.environment.case_dir + 'stl/' + self.environment.config['vv']['stl_thruster'])
 
                 # Transform plume
                 
@@ -433,14 +433,14 @@ class RPOD (MissionPlanner):
             
             # print(self.vv.mesh)
 
-            # print(self.case_dir + self.config['stl']['vv'])
+            # print(self.environment.case_dir + self.environment.config['stl']['vv'])
 
             if trade_study == False:
-                path_to_stl = self.case_dir + "results/jfh/firing-" + str(firing) + ".stl" 
+                path_to_stl = self.environment.case_dir + "results/jfh/firing-" + str(firing) + ".stl" 
             elif trade_study == True:
-                path_to_stl = self.case_dir + "results/" + self.get_case_key() + "/jfh/firing-" + str(firing) + ".stl" 
+                path_to_stl = self.environment.case_dir + "results/" + self.get_case_key() + "/jfh/firing-" + str(firing) + ".stl" 
 
-            # path_to_stl = self.case_dir + "results/jfh/firing-" + str(firing) + ".stl"
+            # path_to_stl = self.environment.case_dir + "results/jfh/firing-" + str(firing) + ".stl"
             # self.vv.convert_stl_to_vtk(path_to_vtk, mesh =VVmesh)
             VVmesh.save(path_to_stl)
 
@@ -473,7 +473,7 @@ class RPOD (MissionPlanner):
         # print('link is', link)
 
         # Create results directory if it doesn't already exist.
-        results_dir = self.case_dir + 'results'
+        results_dir = self.environment.case_dir + 'results'
         if not os.path.isdir(results_dir):
             # print("results dir doesn't exist")
             os.mkdir(results_dir)
@@ -495,7 +495,7 @@ class RPOD (MissionPlanner):
             # print("thrusters is", thrusters)
              
             # Load, transform, and, graph STLs of visiting vehicle.  
-            VVmesh = mesh.Mesh.from_file(self.case_dir + 'stl/' + self.config['vv']['stl_lm'])
+            VVmesh = mesh.Mesh.from_file(self.environment.case_dir + 'stl/' + self.environment.config['vv']['stl_lm'])
             vv_orientation = np.array(self.jfh.JFH[firing]['dcm'])
             # print(vv_orientation.transpose())
             VVmesh.rotate_using_matrix(vv_orientation.transpose())
@@ -517,7 +517,7 @@ class RPOD (MissionPlanner):
                 # print('thruster num', thruster, 'thruster id', link[str(thruster)][0])
 
                 # Load plume STL in initial configuration. 
-                plumeMesh = mesh.Mesh.from_file(self.case_dir + 'stl/' + self.config['vv']['stl_thruster'])
+                plumeMesh = mesh.Mesh.from_file(self.environment.case_dir + 'stl/' + self.environment.config['vv']['stl_thruster'])
 
                 # Transform plume
                 
@@ -567,14 +567,14 @@ class RPOD (MissionPlanner):
             
             # print(self.vv.mesh)
 
-            # print(self.case_dir + self.config['stl']['vv'])
+            # print(self.environment.case_dir + self.environment.config['stl']['vv'])
 
             if self.count > 0:
-                path_to_vtk = self.case_dir + "results/strikes/firing-" + str(self.count) + "-" + str(firing)
-                path_to_stl = self.case_dir + "results/jfh/firing-" + str(self.count) + "-" + str(firing) + ".stl"
+                path_to_vtk = self.environment.case_dir + "results/strikes/firing-" + str(self.count) + "-" + str(firing)
+                path_to_stl = self.environment.case_dir + "results/jfh/firing-" + str(self.count) + "-" + str(firing) + ".stl"
             else:
-                path_to_vtk = self.case_dir + "results/jfh/firing-" + str(firing)
-                path_to_stl = self.case_dir + "results/jfh/firing-" + str(firing) + ".stl"
+                path_to_vtk = self.environment.case_dir + "results/jfh/firing-" + str(firing)
+                path_to_stl = self.environment.case_dir + "results/jfh/firing-" + str(firing) + ".stl"
             # self.vv.convert_stl_to_vtk(path_to_vtk, mesh =VVmesh)
             VVmesh.save(path_to_stl)
 
@@ -648,14 +648,14 @@ class RPOD (MissionPlanner):
         """
         sub_dirs = ['results', 'results/strikes', 'results/jfh']
         for sub_dir in sub_dirs:
-            os.makedirs(os.path.join(self.case_dir, sub_dir), exist_ok=True)
+            os.makedirs(os.path.join(self.environment.case_dir, sub_dir), exist_ok=True)
 
     def set_strike_fields(self, target):
         # Initiate array containing cummulative strikes. 
         cum_strikes = np.zeros(len(target.vectors))
 
         # using plume physics?
-        if self.config['pm']['kinetics'] != 'None':
+        if self.environment.config['pm']['kinetics'] != 'None':
 
             # Initiate array containing max pressures induced on each element.
             max_pressures = np.zeros(len(target.vectors))
@@ -686,7 +686,7 @@ class RPOD (MissionPlanner):
             # reset strikes for each firing
             strikes = np.zeros(len(target.vectors))
 
-            if self.config['pm']['kinetics'] != 'None':
+            if self.environment.config['pm']['kinetics'] != 'None':
                 # reset pressures for each firing
                 pressures = np.zeros(len(target.vectors))
 
@@ -774,7 +774,7 @@ class RPOD (MissionPlanner):
 
 
         # set plume strike fields
-        if self.config['pm']['kinetics'] != 'None':
+        if self.environment.config['pm']['kinetics'] != 'None':
             cum_strikes, max_pressures, max_shears, cum_heat_flux_load = self.set_strike_fields(target)
         else:
             cum_strikes = self.set_strike_fields(target)
@@ -793,7 +793,7 @@ class RPOD (MissionPlanner):
             firing_time = float(self.jfh.JFH[firing]['t'])
 
             # set plume strike fields
-            if self.config['pm']['kinetics'] != 'None':
+            if self.environment.config['pm']['kinetics'] != 'None':
                 strikes, pressures, shear_stresses, heat_flux, heat_flux_load = self.set_plume_strike_fields(target)
             else:
                 strikes = self.set_plume_strike_fields(target)
@@ -845,8 +845,8 @@ class RPOD (MissionPlanner):
                     # print()
 
                     # Evaluate plume strike logic
-                    within_distance = float(norm_distance) < float(self.config['plume']['radius'])
-                    within_theta = float(theta) < float(self.config['plume']['wedge_theta'])
+                    within_distance = float(norm_distance) < float(self.environment.config['plume']['radius'])
+                    within_theta = float(theta) < float(self.environment.config['plume']['wedge_theta'])
                     facing_thruster = surface_dot_plume < 0
                     
                     if (within_distance and within_theta and facing_thruster):
@@ -856,9 +856,9 @@ class RPOD (MissionPlanner):
                         # if Simplified gas kinetics model is enabled, get relevant parameters
                         # pass parameters and thruster info to SimplifiedGasKinetics and record returns of pressures and heat flux
                         # atm, gas_surface interaction model is not checked, as only one is supported
-                        if self.config['pm']['kinetics'] == "Simplified":
-                            T_w = float(self.config['tv']['surface_temp'])
-                            sigma = float(self.config['tv']['sigma'])
+                        if self.environment.config['pm']['kinetics'] == "Simplified":
+                            T_w = float(self.environment.config['tv']['surface_temp'])
+                            sigma = float(self.environment.config['tv']['sigma'])
                             thruster_metrics = self.vv.thruster_metrics[self.vv.thruster_data[thruster_id]['type'][0]]
                             simple_plume = SimplifiedGasKinetics(norm_distance, theta, thruster_metrics, T_w, sigma)
                             pressures[i] += simple_plume.get_pressure()
@@ -887,7 +887,7 @@ class RPOD (MissionPlanner):
             # add pressure and heat_flux into each cell's window sum
             # update the window queues based on their max sizes, and the firing times
             # update the parameter queues based on the updates made on the window queues 
-            # if self.config['pm']['kinetics'] != 'None' and checking_constraints:
+            # if self.environment.config['pm']['kinetics'] != 'None' and checking_constraints:
             #     for i in range(len(pressures)):
             #         pressure_queues[i].put(float(pressures[i]))
             #         pressure_window_sums[i] += pressures[i]
@@ -933,7 +933,7 @@ class RPOD (MissionPlanner):
             #             failed_constraints = 1
 
 
-            if self.config['pm']['kinetics'] != 'None':
+            if self.environment.config['pm']['kinetics'] != 'None':
                 cellData["pressures"] = pressures
                 cellData["max_pressures"] = max_pressures
                 cellData["shear_stress"] = shear_stresses
@@ -942,13 +942,13 @@ class RPOD (MissionPlanner):
                 cellData["heat_flux_load"] = heat_flux_load
                 cellData["cum_heat_flux_load"] = cum_heat_flux_load
 
-            path_to_vtk = self.case_dir + "results/strikes/firing-" + str(firing)
+            path_to_vtk = self.environment.case_dir + "results/strikes/firing-" + str(firing)
 
             # print(cellData)
             # input()
             self.target.convert_stl_to_vtk_strikes(path_to_vtk, cellData.copy(), target)
     
-        # if self.config['pm']['kinetics'] != 'None' and checking_constraints:
+        # if self.environment.config['pm']['kinetics'] != 'None' and checking_constraints:
         #     if not failed_constraints:
         #         constraint_file.write(f"All impingement constraints met.")
         #     # constraint_file.close()
@@ -1214,9 +1214,9 @@ class RPOD (MissionPlanner):
         r = [x, y, z]
 
         if trade_study == False:
-            jfh_path = self.case_dir + 'jfh/' + self.config['jfh']['jfh']
+            jfh_path = self.environment.case_dir + 'jfh/' + self.environment.config['jfh']['jfh']
         elif trade_study == True:
-            jfh_path = self.case_dir +'jfh/' + self.get_case_key() + '.A'
+            jfh_path = self.environment.case_dir +'jfh/' + self.get_case_key() + '.A'
 
         # print(jfh_path)
         print_1d_JFH(t, r, rot, jfh_path) 
@@ -1370,9 +1370,9 @@ class RPOD (MissionPlanner):
         r = [x, y, z]
 
         if trade_study == False:
-            jfh_path = self.case_dir + 'jfh/' + self.config['jfh']['jfh']
+            jfh_path = self.environment.case_dir + 'jfh/' + self.environment.config['jfh']['jfh']
         elif trade_study == True:
-            jfh_path = self.case_dir +'jfh/' + self.get_case_key() + '.A'
+            jfh_path = self.environment.case_dir +'jfh/' + self.get_case_key() + '.A'
 
         # print(jfh_path)
         print_1d_JFH(t, r, rot, jfh_path)
@@ -1609,7 +1609,7 @@ class RPOD (MissionPlanner):
 
         r = [x, y, z]
 
-        jfh_path = self.case_dir + 'jfh/' + self.config['jfh']['jfh']
+        jfh_path = self.environment.case_dir + 'jfh/' + self.environment.config['jfh']['jfh']
         # print(jfh_path)
         self.edit_1d_JFH(t, r, rot)
 

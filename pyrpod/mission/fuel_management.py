@@ -1,7 +1,9 @@
-class FuelManager:
-    def __init__(self, isp, mass):
-        self.isp = isp
-        self.mass = mass
+from pyrpod.mission.SubModule import SubModule
+
+class FuelManager(SubModule):
+    # def __init__(self, isp, mass):
+    #     self.isp = isp
+    #     self.mass = mass
 
     def compute_burn_time(self, dv, thrust):
         # Simplified rocket equation stub

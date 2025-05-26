@@ -25,7 +25,7 @@
 import test_header
 import unittest, os, sys
 from pyrpod.vehicle import LogisticsModule
-from pyrpod.mission import MissionPlanner
+from pyrpod.mission import MissionPlanner, MissionEnvironment
 
 class DeltaMassChecks(unittest.TestCase):
     def test_delta_m_plots(self):
@@ -49,7 +49,8 @@ class DeltaMassChecks(unittest.TestCase):
         lm.add_thruster_performance(400, 300)
         lm.assign_thruster_groups()
 
-        mp = MissionPlanner.MissionPlanner(case_dir)
+        me = MissionEnvironment.MissionEnvironment(case_dir)
+        mp = MissionPlanner.MissionPlanner(me)
         mp.set_lm(lm)
         mp.flight_eval.read_flight_plan(lm)
 

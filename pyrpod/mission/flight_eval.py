@@ -1,11 +1,10 @@
 import pandas as pd
 import numpy as np
 
-class FlightEvaluator:
-    def __init__(self, case_dir, config):
-        self.case_dir = case_dir
-        self.config = config
-        self.maneuvers = []
+from pyrpod.mission.SubModule import SubModule
+
+class FlightEvaluator(SubModule):
+        # self.maneuvers = []
 
     def load_plan(self):
         # Parse CSV or other source

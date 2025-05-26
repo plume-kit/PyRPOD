@@ -1,6 +1,6 @@
 class SixDOFDynamics:
-    def __init__(self, thruster_model):
-        self.thruster_model = thruster_model
+    # def __init__(self):
+        # self.thruster_model = thruster_model
 
     def evaluate_translational(self, dv):
         # Placeholder logic for translational maneuver

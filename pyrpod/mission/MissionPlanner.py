@@ -5,26 +5,37 @@ from pyrpod.mission.thruster_grouping import ThrusterGrouping
 from pyrpod.mission.flight_eval import FlightEvaluator
 from pyrpod.mission.post_processing import PostProcessor
 from pyrpod.mission.orbital_transfer import OrbitalTransferEngine
-
-import configparser
-
+from pyrpod.mission.MissionEnvironment import MissionEnvironment
 
 
 class MissionPlanner:
-    def __init__(self, case_dir):
-        # Read case configuration data.
-        self.case_dir = case_dir
-        config = configparser.ConfigParser()
-        config.read(self.case_dir + "config.ini")
-        self.config = config
 
+    def __init__(self, environment: MissionEnvironment):
+        self.environment = environment
+
+        # Initialize submodules with context if needed
         self.state = StateVectors()
-        # self.thruster_groups = ThrusterGrouping(config.get('rcs_config', {}))
-        # self.dynamics = SixDOFDynamics(self.thruster_groups)
-        # self.propellant = FuelManager(config.get('isp', 300), config.get('mass', 1000))
-        self.flight_eval = FlightEvaluator(self.case_dir, self.config)
-        # self.post_processor = PostProcessor()
+        self.flight_eval = FlightEvaluator(self.environment)
         self.orbital_transfer = OrbitalTransferEngine()
+        self.post_processor = PostProcessor()
+        self.dynamics = SixDOFDynamics()
+        self.propellant = FuelManager(self.environment)
+
+
+    # def __init__(self, case_dir):
+    #     # Read case configuration data.
+    #     self.case_dir = case_dir
+    #     config = configparser.ConfigParser()
+    #     config.read(self.case_dir + "config.ini")
+    #     self.config = config
+
+    #     self.state = StateVectors()
+    #     # self.thruster_groups = ThrusterGrouping(config.get('rcs_config', {}))
+    #     # self.dynamics = SixDOFDynamics(self.thruster_groups)
+    #     # self.propellant = FuelManager(config.get('isp', 300), config.get('mass', 1000))
+    #     self.flight_eval = FlightEvaluator(self.case_dir, self.config)
+    #     # self.post_processor = PostProcessor()
+    #     self.orbital_transfer = OrbitalTransferEngine()
     
     def set_lm(self, LogisticsModule):
         """
