@@ -15,6 +15,7 @@ import pandas as pd
 
 from pyrpod.vehicle import LogisticsModule, TargetVehicle, VisitingVehicle
 from pyrpod.rpod import RPOD, JetFiringHistory
+from pyrpod.mission import MissionEnvironment
 
 class HollowCubeChecks(unittest.TestCase):
     def test_hollow_cube(self):
@@ -37,8 +38,11 @@ class HollowCubeChecks(unittest.TestCase):
         vv.set_thruster_config()
         # vv.set_thruster_metrics()
 
-        # Initiate RPOD study.
-        rpod = RPOD.RPOD(case_dir)
+        # Set mission environment.
+        me = MissionEnvironment.MissionEnvironment(case_dir)
+
+        # Instantiate RPOD object.
+        rpod = RPOD.RPOD(me)
         rpod.study_init(jfh, tv, vv)
 
     # 2. Execute

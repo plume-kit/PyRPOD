@@ -12,13 +12,13 @@
 
 import test_header
 import unittest
-from pyrpod.mission import MissionPlanner
+from pyrpod.mission import MissionPlanner, MissionEnvironment
 
 class MDAOTest(unittest.TestCase):
     def test_mission(self):
         case_dir = '../case/mission/flight_envelopes/'
-
-        planner = MissionPlanner.MissionPlanner(case_dir)
+        me = MissionEnvironment.MissionEnvironment(case_dir)
+        planner = MissionPlanner.MissionPlanner(me)
         planner.orbital_transfer.init_hohmann_transfers()
         planner.orbital_transfer.add_hohmann_transfer(300, 20000, leg_id="LEO to MEO")
         planner.orbital_transfer.add_hohmann_transfer(20000, 35786, leg_id="MEO to GEO")

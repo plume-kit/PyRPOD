@@ -13,7 +13,7 @@ import unittest, os
 import numpy as np
 import meshio
 from pyrpod.vehicle import Vehicle
-from pyrpod.mission import MissionPlanner
+from pyrpod.mission import MissionPlanner, MissionEnvironment
 
 class STLtoVTKChecks(unittest.TestCase):
     def test_stl_to_vtk(self):
@@ -22,7 +22,8 @@ class STLtoVTKChecks(unittest.TestCase):
         vtk_file_path = os.path.join(case_dir, 'results', 'cylinder.vtu')
 
         # Load mission planner and vehicle object data for analysis
-        mp = MissionPlanner.MissionPlanner(case_dir)
+        me = MissionEnvironment.MissionEnvironment(case_dir)
+        mp = MissionPlanner.MissionPlanner(me)
         v = Vehicle.Vehicle(case_dir)
 
         # 2. Execute

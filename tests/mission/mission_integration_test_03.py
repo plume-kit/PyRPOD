@@ -11,7 +11,7 @@
 import test_header
 import unittest, os, sys
 from pyrpod.vehicle import LogisticsModule
-from pyrpod.mission import MissionPlanner
+from pyrpod.mission import MissionPlanner, MissionEnvironment
 
 class FlightPlanChecks(unittest.TestCase):
     def test_rcs_flight_performance(self):
@@ -36,7 +36,8 @@ class FlightPlanChecks(unittest.TestCase):
         lm.assign_thruster_groups()
 
         # Calculate simple 1D flight performance
-        mp = MissionPlanner.MissionPlanner(case_dir)
+        me = MissionEnvironment.MissionEnvironment(case_dir)
+        mp = MissionPlanner.MissionPlanner(me)
         mp.set_lm(lm)
         mp.flight_eval.read_flight_plan(lm)
         mp.flight_eval.calc_flight_performance()

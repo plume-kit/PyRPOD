@@ -17,6 +17,7 @@ import unittest, os, sys
 
 from pyrpod.vehicle import LogisticsModule, TargetVehicle
 from pyrpod.rpod import RPOD, JetFiringHistory
+from pyrpod.mission import MissionEnvironment
 
 class OneDimTransApproachChecks(unittest.TestCase):
     def test_1d_approach(self):
@@ -48,8 +49,11 @@ class OneDimTransApproachChecks(unittest.TestCase):
         # Use TCD to group DOF
         lm.assign_thruster_groups()
 
+        # Set mission environment.
+        me = MissionEnvironment.MissionEnvironment(case_dir)
+
         # Instantiate RPOD object.
-        rpod = RPOD.RPOD(case_dir)
+        rpod = RPOD.RPOD(me)
         rpod.study_init(jfh, tv, lm)
 
         # Produce JFH using 1D physics

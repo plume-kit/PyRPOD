@@ -16,6 +16,7 @@ import test_header
 import unittest, os, sys
 from pyrpod.vehicle import LogisticsModule, TargetVehicle
 from pyrpod.rpod import RPOD, JetFiringHistory
+from pyrpod.mission import MissionEnvironment
 
 class BaseCaseChecks(unittest.TestCase):
     def test_base_case(self):
@@ -37,8 +38,11 @@ class BaseCaseChecks(unittest.TestCase):
         # Load in thruster configuration file.
         lm.set_thruster_config()
 
+        # Set mission environment.
+        me = MissionEnvironment.MissionEnvironment(case_dir)
+
         # Instantiate RPOD object.
-        rpod = RPOD.RPOD(case_dir)
+        rpod = RPOD.RPOD(me)
         rpod.study_init(jfh, tv, lm)
 
         # Read in JFH.

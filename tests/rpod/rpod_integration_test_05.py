@@ -13,6 +13,8 @@ import unittest, os, sys
 
 from pyrpod.vehicle import LogisticsModule, TargetVehicle, VisitingVehicle
 from pyrpod.rpod import RPOD, JetFiringHistory
+from pyrpod.mission import MissionEnvironment
+
 
 class LoadJFHChecks(unittest.TestCase):
     def test_plume_constraints(self):
@@ -32,7 +34,9 @@ class LoadJFHChecks(unittest.TestCase):
         vv.set_thruster_config()
         vv.set_thruster_metrics()
 
-        rpod = RPOD.RPOD(case_dir)
+        me = MissionEnvironment.MissionEnvironment(case_dir)
+
+        rpod = RPOD.RPOD(me)
         rpod.study_init(jfh, tv, vv)
 
         rpod.graph_jfh()

@@ -13,6 +13,8 @@ import unittest, os, sys
 
 from pyrpod.vehicle import LogisticsModule, TargetVehicle, VisitingVehicle
 from pyrpod.rpod import RPOD, JetFiringHistory
+from pyrpod.mission import MissionEnvironment
+
 class LoadSTLModels(unittest.TestCase):
     def test_decoupled_tcd(self):
 
@@ -39,8 +41,11 @@ class LoadSTLModels(unittest.TestCase):
         # Load in thruster data file
         vv.set_thruster_metrics()
 
+        # Set mission environment.
+        me = MissionEnvironment.MissionEnvironment(case_dir)
+
         # Instantiate RPOD object.
-        rpod = RPOD.RPOD(case_dir)
+        rpod = RPOD.RPOD(me)
         # Initiate RPOD study.
         rpod.study_init(jfh, tv, vv)
         # Load STLs in Paraview
