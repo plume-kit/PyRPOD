@@ -1,5 +1,6 @@
 __pycache__/
 img/
+venv-pyrpod/
 
 data/stl/groups/
 data/stl/tcd/
@@ -10,3 +11,4 @@ results.txt
 *.pyc
 *.png
 *.vtu
+*.log
