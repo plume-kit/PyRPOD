@@ -3,6 +3,9 @@ import numpy as np
 import sympy as sp
 
 from pyrpod.util.io.file_print import print_JFH
+from pyrpod.logging_utils import get_logger
+
+logger = get_logger("pyrpod.rpod.JetFiringHistory")
 
 # Helper functions (move to util.py?)
 def rotation_matrix_from_vectors(vec1, vec2):
@@ -108,7 +111,7 @@ class JetFiringHistory:
             try:
                 self.nt = int(lines.pop(0).split(' ')[4])
             except IndexError:
-                print("WARNING: supplied JFH file is empty")
+                logger.warning("Supplied JFH file is empty: %s", path_to_jfh)
                 self.JFH = None
                 return
 
@@ -201,13 +204,13 @@ class JetFiringHistory:
 
         # Symbolic Calculations of tangent and normal unit vectors
         r = r_of_t
-        rprime = [diff(r[0],t), diff(r[1],t), diff(r[2],t)]
-        tanvector = [rprime[0]/make_norm(rprime), rprime[1]/make_norm(rprime), rprime[2]/make_norm(rprime)]
-        tanprime = [diff(tanvector[0],t), diff(tanvector[1],t), diff(tanvector[2],t)]
-        normalvector = [tanprime[0]/make_norm(tanprime), tanprime[1]/make_norm(tanprime), tanprime[1]/make_norm(tanprime)]
-        tan_vector_functions = [lambdify(t, tanvector[0]),lambdify(t, tanvector[1]), lambdify(t, tanvector[2])]
-        normal_vector_functions = [lambdify(t, normalvector[0]),lambdify(t, normalvector[1]), lambdify(t, normalvector[2])]
-        value_functions = [lambdify(t, r[0]), lambdify(t, r[1]), lambdify(t, r[2])]
+        rprime = [sp.diff(r[0], t), sp.diff(r[1], t), sp.diff(r[2], t)]
+        tanvector = [rprime[0] / make_norm(rprime), rprime[1] / make_norm(rprime), rprime[2] / make_norm(rprime)]
+        tanprime = [sp.diff(tanvector[0], t), sp.diff(tanvector[1], t), sp.diff(tanvector[2], t)]
+        normalvector = [tanprime[0] / make_norm(tanprime), tanprime[1] / make_norm(tanprime), tanprime[1] / make_norm(tanprime)]
+        tan_vector_functions = [sp.lambdify(t, tanvector[0]), sp.lambdify(t, tanvector[1]), sp.lambdify(t, tanvector[2])]
+        normal_vector_functions = [sp.lambdify(t, normalvector[0]), sp.lambdify(t, normalvector[1]), sp.lambdify(t, normalvector[2])]
+        value_functions = [sp.lambdify(t, r[0]), sp.lambdify(t, r[1]), sp.lambdify(t, r[2])]
 
         # Save data of evaluated position and velocity functions.
         x, y, z = [value_functions[0](t_values), value_functions[1](t_values), value_functions[2](t_values)]
@@ -217,6 +220,8 @@ class JetFiringHistory:
         for i in range(len(t_values)):
             # Graph path
             # ax = plt.figure().add_subplot(projection='3d')
+            from matplotlib import pyplot as plt
+            from mpl_toolkits import mplot3d
             figure = plt.figure()
             ax = mplot3d.Axes3D(figure)
             ax.plot(x, y, z, label='position curve')
@@ -224,6 +229,7 @@ class JetFiringHistory:
             normal_location = t_values[i]
 
             # Load, Transform, and Graph STL
+            from stl import mesh
             VV = mesh.Mesh.from_file('../stl/cylinder.stl')
             VV.points = 0.2 * VV.points
 
@@ -268,7 +274,7 @@ class JetFiringHistory:
             #     normal_vector_functions[2](normal_location),
             #     color='r'
             # )
-            print(i)
+            logger.info("graph_param_curve step %s/%s", i + 1, len(t_values))
 
             ax.set_xlabel('X')
             ax.set_ylabel('Y')

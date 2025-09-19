@@ -9,6 +9,9 @@ import os
 
 from pyrpod.vehicle.Vehicle import Vehicle
 from pyrpod.mdao import SweepConfig
+from pyrpod.logging_utils import get_logger
+
+logger = get_logger("pyrpod.vehicle.VisitingVehicle")
 
 # Adapted from
 # https://stackoverflow.com/questions/54616049/converting-a-rotation-matrix-to-euler-angles-and-back-special-case
@@ -177,11 +180,11 @@ class VisitingVehicle(Vehicle):
     def print_info(self):
         """Simple method to format printing of vehicle info."""
 
-        print('number of thrusters:', self.num_thrusters)
-        print('thruster units:', self.thruster_units)
-        print('center of gravity:', self.cog)
-        print('grapple coordinate:', self.grapple)
-        print('number of dual jet interactions:', self.jet_interactions)
+        logger.info('number of thrusters: %s', self.num_thrusters)
+        logger.info('thruster units: %s', self.thruster_units)
+        logger.info('center of gravity: %s', self.cog)
+        logger.info('grapple coordinate: %s', self.grapple)
+        logger.info('number of dual jet interactions: %s', self.jet_interactions)
         return
     
     def set_stl(self):
@@ -418,11 +421,11 @@ class VisitingVehicle(Vehicle):
             None
         """
 
-        print('number of thrusters:', self.num_thrusters)
-        print('thruster units:', self.thruster_units)
-        print('center of gravity:', self.cog)
-        print('grapple coordinate:', self.grapple)
-        print('number of dual jet interactions:', self.jet_interactions)
+        logger.info('number of thrusters: %s', self.num_thrusters)
+        logger.info('thruster units: %s', self.thruster_units)
+        logger.info('center of gravity: %s', self.cog)
+        logger.info('grapple coordinate: %s', self.grapple)
+        logger.info('number of dual jet interactions: %s', self.jet_interactions)
         return
 
     def initiate_plume_mesh(self):

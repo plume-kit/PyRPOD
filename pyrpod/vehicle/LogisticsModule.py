@@ -5,6 +5,9 @@ from matplotlib import pyplot as plt
 from mpl_toolkits import mplot3d
 import os
 import configparser
+from pyrpod.logging_utils import get_logger
+
+logger = get_logger("pyrpod.vehicle.LogisticsModule")
 
 class LogisticsModule(VisitingVehicle):
     """
@@ -225,7 +228,7 @@ class LogisticsModule(VisitingVehicle):
     def print_rcs_groups(self):
         """Simple method to format printing of RCS groups"""
         for group in self.rcs_groups:
-            print(group, self.rcs_groups[group])
+            logger.info("%s %s", group, self.rcs_groups[group])
 
     def assign_thrusters(self, group):
         """
@@ -404,12 +407,16 @@ class LogisticsModule(VisitingVehicle):
 
             F_decel += (thruster_metrics['F'] * np.cos(cant))
 
-        print(F_decel)
+        logger.debug("F_decel computed: %s", F_decel)
         a_decel = F_decel / mass
 
         v_o = np.sqrt(v_ida**2 + 2 * a_decel * r_o)
-        print(v_o)
+        logger.debug("v_o computed: %s", v_o)
 
         vo_range = [0.1*v_o, 0.25*v_o, 0.5*v_o, 0.75*v_o, v_o]
-        print(vo_range)
+        logger.debug("vo_range: %s", vo_range)
         return vo_range
+
+    def debug_decel_calc_example(self, F_decel, v_o, vo_range):
+        # Replaces ad-hoc prints with a single debug helper (optional usage)
+        logger.debug("F_decel=%s, v_o=%s, vo_range=%s", F_decel, v_o, vo_range)

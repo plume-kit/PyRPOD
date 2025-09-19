@@ -1,4 +1,9 @@
 from pyrpod.mission.SubModule import SubModule
+import numpy as np
+import pandas as pd
+from pyrpod.logging_utils import get_logger
+
+logger = get_logger(__name__)
 
 class FuelManager(SubModule):
     # def __init__(self, isp, mass):
@@ -114,7 +119,7 @@ class FuelManager(SubModule):
             t_firing = dm / (self.calc_m_dot_sum(group) / 2)
             dw = (t_firing*self.vv.radius*(self.calc_thrust_sum(group) / 2)) / self.vv.I_y
         if group == 'roll':
-            print('ERROR: functionality not added for a roll rotation')
+            logger.error('ERROR: functionality not added for a roll rotation')
         
         return dw
 
@@ -149,7 +154,7 @@ class FuelManager(SubModule):
                 dm = (self.calc_m_dot_sum(group) / 2)*t_firing
                 self.vv.mass += dm
             if group == 'roll':
-                print('ERROR: functionality not added for a roll rotation')
+                logger.error('ERROR: functionality not added for a roll rotation')
         
 
         if forward_propagation == True:
@@ -160,7 +165,7 @@ class FuelManager(SubModule):
                 dm = self.calc_m_dot_sum(group)*t_firing
                 self.vv.mass -= dm
             if group == 'roll':
-                print('ERROR: functionality not added for a roll rotation')
+                logger.error('ERROR: functionality not added for a roll rotation')
         return dm
 
     def calc_delta_mass_v_e(self, dv, v_e, forward_propagation):

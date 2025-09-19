@@ -3,6 +3,8 @@ import os
 import math
 
 from stl import mesh
+import matplotlib.pyplot as plt
+from mpl_toolkits import mplot3d
 
 from pyrpod.vehicle.LogisticsModule import LogisticsModule
 from pyrpod.mission.MissionPlanner import MissionPlanner
@@ -12,6 +14,10 @@ from pyrpod.util.io.file_print import print_1d_JFH
 
 from tqdm import tqdm
 from queue import Queue
+
+from pyrpod.logging_utils import get_logger
+
+logger = get_logger("pyrpod.rpod.RPOD")
 
 def rotation_matrix_from_vectors(vec1, vec2):
     """ Find the rotation matrix that aligns vec1 to vec2
@@ -139,10 +145,10 @@ class RPOD (MissionPlanner):
             Does the method need to return a status message? or pass similar data?
         """
 
-        #TODO: Re-factor using 
         # Save first coordinate in the JFH
         vv_initial_firing = self.jfh.JFH[0]
-        # print(type(vv_initial_firing['xyz']))
+        # Log initial configuration details for debugging
+        logger.debug("Initial VV firing position: %s", vv_initial_firing['xyz'])
 
         # Translate VV STL to first coordinate
         self.vv.mesh.translate(vv_initial_firing['xyz'])
@@ -150,17 +156,17 @@ class RPOD (MissionPlanner):
         # Combine target and VV STLs into one "Mesh" object.
         combined = mesh.Mesh(np.concatenate(
             [self.target.mesh.data, self.vv.mesh.data]
-            ))
+        ))
 
         figure = plt.figure()
         # axes = mplot3d.Axes3D(figure)
-        axes = figure.add_subplot(projection = '3d')
+        axes = figure.add_subplot(projection='3d')
         axes.add_collection3d(mplot3d.art3d.Poly3DCollection(combined.vectors))
-        # axes.quiver(X, Y, Z, U, V, W, color = (0,0,0), length=1, normalize=True)
+        # axes.quiver(X, Y, Z, U, V, W, color=(0,0,0), length=1, normalize=True)
         lim = 100
-        axes.set_xlim([-1*lim, lim])
-        axes.set_ylim([-1*lim, lim])
-        axes.set_zlim([-1*lim, lim])
+        axes.set_xlim([-1 * lim, lim])
+        axes.set_ylim([-1 * lim, lim])
+        axes.set_zlim([-1 * lim, lim])
         axes.set_xlabel('X')
         axes.set_ylabel('Y')
         axes.set_zlabel('Z')
@@ -213,7 +219,7 @@ class RPOD (MissionPlanner):
                 plumeMesh.points = 0.05 * plumeMesh.points
 
                 # Transform according to DCM and exit vector for current thruster in VTDF
-                print(link[str(thruster)][0])
+                logger.debug("Active thruster mapped id: %s", link.get(str(thruster)))
                 thruster_id = link[str(thruster)][0]
                 thruster_orientation = np.matrix(
                     self.vv.thruster_data[thruster_id]['dcm']
@@ -223,7 +229,7 @@ class RPOD (MissionPlanner):
                 plumeMesh.translate(self.vv.thruster_data[thruster_id]['exit'][0])
 
 
-                print(self.vv.thruster_data[thruster_id]['dcm'])
+                logger.debug("Thruster %s DCM: %s", thruster_id, self.vv.thruster_data[thruster_id]['dcm'])
 
                 # Add surface to graph. 
                 surface = mplot3d.art3d.Poly3DCollection(plumeMesh.vectors)
@@ -241,7 +247,7 @@ class RPOD (MissionPlanner):
             axes.view_init(azim=0, elev=2*shift)
 
 
-            print()
+            logger.debug("Completed plotting thruster check for firing %d", firing)
 
             if firing < 10:
                 index = '00' + str(firing)
@@ -1060,14 +1066,11 @@ class RPOD (MissionPlanner):
 
             rot.append(np.array(rotation_matrix_from_vectors(x1, y1)))
 
-        #     # constraint_file.close()
-
-        return firing_data
-
+        # After simulating, estimate a coarse time multiplier based on number of firings
         n_firings = len(t)
-        time_multiplier = 10 / n_firings
+        time_multiplier = 10 / n_firings if n_firings > 0 else 1
         # print('n firings:', len(t), 'time multiplier:', time_multiplier)
-        return (1/time_multiplier)
+        return (1 / time_multiplier)
 
         # one_d_results = {
         #     'n_firings': n,
