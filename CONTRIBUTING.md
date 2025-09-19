@@ -62,7 +62,7 @@ Consistency is key. PyRPOD enforces uniform code formatting using the `black` co
 
 ## Licensing
 
-By contributing, you agree that your contributions will be licensed under the same license as PyRPOD (currently [MIT License](LICENSE)). Ensure your contributions comply with third-party licensing terms if applicable.
+By contributing, you agree that your contributions will be licensed under the same license as PyRPOD (currently [GPL-3.0 License](LICENSE.md)). Ensure your contributions comply with third-party licensing terms if applicable.
 
 ---
 
