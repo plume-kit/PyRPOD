@@ -3,6 +3,8 @@ import os
 import math
 
 from stl import mesh
+import matplotlib.pyplot as plt
+from mpl_toolkits import mplot3d
 
 from pyrpod.vehicle.LogisticsModule import LogisticsModule
 from pyrpod.mission.MissionPlanner import MissionPlanner
@@ -13,26 +15,18 @@ from pyrpod.util.io.file_print import print_1d_JFH
 from tqdm import tqdm
 from queue import Queue
 
-def rotation_matrix_from_vectors(vec1, vec2):
-    """ Find the rotation matrix that aligns vec1 to vec2
-    :param vec1: A 3d "source" vector
-    :param vec2: A 3d "destination" vector
-    :return mat: A transform matrix (3x3) which when applied to vec1, aligns it with vec2.
-    """
-    if vec1 == vec2:
-        x = [1, 0, 0]
-        y = [0, 1, 0]
-        z = [0, 0, 1]
-        id_matrix = np.array([x, y, z])
-        return id_matrix
+from pyrpod.logging_utils import get_logger
+from pyrpod.util.math.transform import rotation_matrix_from_vectors
 
-    a, b = (vec1 / np.linalg.norm(vec1)).reshape(3), (vec2 / np.linalg.norm(vec2)).reshape(3)
-    v = np.cross(a, b)
-    c = np.dot(a, b)
-    s = np.linalg.norm(v)
-    kmat = np.array([[0, -v[2], v[1]], [v[2], 0, -v[0]], [-v[1], v[0], 0]])
-    rotation_matrix = np.eye(3) + kmat + kmat.dot(kmat) * ((1 - c) / (s ** 2)) 
-    return rotation_matrix
+# New modular imports for refactor
+from pyrpod.rpod.approach_maneuvers import (
+    ApproachInputs,
+    compute_1d_approach,
+)
+from pyrpod.rpod.io import ensure_results_dirs, write_jfh
+from pyrpod.rpod.PlumeStrikeEstimationStudy import compute_plume_strikes
+
+logger = get_logger("pyrpod.rpod.RPOD")
 
 class RPOD (MissionPlanner):
     """
@@ -139,10 +133,10 @@ class RPOD (MissionPlanner):
             Does the method need to return a status message? or pass similar data?
         """
 
-        #TODO: Re-factor using 
         # Save first coordinate in the JFH
         vv_initial_firing = self.jfh.JFH[0]
-        # print(type(vv_initial_firing['xyz']))
+        # Log initial configuration details for debugging
+        logger.debug("Initial VV firing position: %s", vv_initial_firing['xyz'])
 
         # Translate VV STL to first coordinate
         self.vv.mesh.translate(vv_initial_firing['xyz'])
@@ -150,17 +144,17 @@ class RPOD (MissionPlanner):
         # Combine target and VV STLs into one "Mesh" object.
         combined = mesh.Mesh(np.concatenate(
             [self.target.mesh.data, self.vv.mesh.data]
-            ))
+        ))
 
         figure = plt.figure()
         # axes = mplot3d.Axes3D(figure)
-        axes = figure.add_subplot(projection = '3d')
+        axes = figure.add_subplot(projection='3d')
         axes.add_collection3d(mplot3d.art3d.Poly3DCollection(combined.vectors))
-        # axes.quiver(X, Y, Z, U, V, W, color = (0,0,0), length=1, normalize=True)
+        # axes.quiver(X, Y, Z, U, V, W, color=(0,0,0), length=1, normalize=True)
         lim = 100
-        axes.set_xlim([-1*lim, lim])
-        axes.set_ylim([-1*lim, lim])
-        axes.set_zlim([-1*lim, lim])
+        axes.set_xlim([-1 * lim, lim])
+        axes.set_ylim([-1 * lim, lim])
+        axes.set_zlim([-1 * lim, lim])
         axes.set_xlabel('X')
         axes.set_ylabel('Y')
         axes.set_zlabel('Z')
@@ -213,7 +207,7 @@ class RPOD (MissionPlanner):
                 plumeMesh.points = 0.05 * plumeMesh.points
 
                 # Transform according to DCM and exit vector for current thruster in VTDF
-                print(link[str(thruster)][0])
+                logger.debug("Active thruster mapped id: %s", link.get(str(thruster)))
                 thruster_id = link[str(thruster)][0]
                 thruster_orientation = np.matrix(
                     self.vv.thruster_data[thruster_id]['dcm']
@@ -223,7 +217,7 @@ class RPOD (MissionPlanner):
                 plumeMesh.translate(self.vv.thruster_data[thruster_id]['exit'][0])
 
 
-                print(self.vv.thruster_data[thruster_id]['dcm'])
+                logger.debug("Thruster %s DCM: %s", thruster_id, self.vv.thruster_data[thruster_id]['dcm'])
 
                 # Add surface to graph. 
                 surface = mplot3d.art3d.Poly3DCollection(plumeMesh.vectors)
@@ -241,7 +235,7 @@ class RPOD (MissionPlanner):
             axes.view_init(azim=0, elev=2*shift)
 
 
-            print()
+            logger.debug("Completed plotting thruster check for firing %d", firing)
 
             if firing < 10:
                 index = '00' + str(firing)
@@ -759,127 +753,65 @@ class RPOD (MissionPlanner):
             Method doesn't currently return anything. Simply produces data as needed.
             Does the method need to return a status message? or pass similar data?
         """
-        # Link JFH numbering of thrusters to thruster names.  
-        link = {}
-        i = 1
-        for thruster in self.vv.thruster_data:
-            link[str(i)] = self.vv.thruster_data[thruster]['name']
-            i = i + 1
-
+        # Prepare results directories and target data
         self.create_results_dir()
-
-        # Save STL surface of target vehicle to local variable.
         target = self.target.mesh
         target_normals = target.get_unit_normals()
 
-
-        # set plume strike fields
-        if self.environment.config['pm']['kinetics'] != 'None':
+        # Initialize cumulative arrays
+        kinetics_on = self.environment.config['pm']['kinetics'] != 'None'
+        if kinetics_on:
             cum_strikes, max_pressures, max_shears, cum_heat_flux_load = self.set_strike_fields(target)
         else:
             cum_strikes = self.set_strike_fields(target)
 
-
         firing_data = {}
 
-        # Loop through each firing in the JFH.
+        # Loop through each firing in the JFH and delegate to impingement module
         for firing in range(len(self.jfh.JFH)):
-        # for firing in tqdm(range(len(self.jfh.JFH)), desc='All firings'):
+            step = {
+                'thrusters': self.jfh.JFH[firing]['thrusters'],
+                'xyz': np.array(self.jfh.JFH[firing]['xyz']),
+                'dcm': np.array(self.jfh.JFH[firing]['dcm']),
+                't': float(self.jfh.JFH[firing]['t'])
+            }
 
-            # print('firing =', firing+1)
+            result = compute_plume_strikes(
+                target_mesh=target,
+                target_unit_normals=target_normals,
+                vv=self.vv,
+                jfh_step=step,
+                environment=self.environment,
+            )
 
-            # Extract firing data
-            thrusters, vv_pos, vv_orientation = self.extract_firing_data(firing)
-            firing_time = float(self.jfh.JFH[firing]['t'])
+            strikes = result["strikes"]
+            cum_strikes = cum_strikes + strikes
 
-            # set plume strike fields
-            if self.environment.config['pm']['kinetics'] != 'None':
-                strikes, pressures, shear_stresses, heat_flux, heat_flux_load = self.set_plume_strike_fields(target)
-            else:
-                strikes = self.set_plume_strike_fields(target)
-
-            # Calculate strikes for active thrusters. 
-            for thruster in thrusters:
-            # for thruster in tqdm(thrusters, desc='Current firing'):
-
-                # Save thruster id using indexed thruster value.
-                # Could naming/code be more clear?
-                # print('thruster num', thruster, 'thruster id', link[str(thruster)][0])
-                thruster_id = link[str(thruster)][0]
-
-                # Load data to calculate plume transformations
-                plume_normal, thruster_pos, thruster_orientation = self.set_plume_transformations(thruster_id, vv_orientation, vv_pos)
-
-                # Calculate plume strikes for each face on the Target surface.
-                for i, face in enumerate(target.vectors):
-                    # print(i, face)
-
-                    # Calculate centroid for face
-                    # Transposed data is convienient to calculate averages
-                    face = np.array(face).transpose()
-                    centroid = self.set_face_centroid(face)
-
-                    distance, norm_distance, unit_distance = self.set_face_distance(thruster_pos, centroid)
-
-
-                    # Calculate angle between distance vector from plume center line.
-                    norm_plume_normal = np.linalg.norm(plume_normal)
-                    unit_plume_normal = plume_normal / norm_plume_normal
-
-                    # print(distance.shape, plume_normal.shape)
-
-                    # theta = 3.14 - np.arccos(
-                    #     np.dot(np.squeeze(distance), np.squeeze(plume_normal)) / (norm_plume_normal * norm_distance)
-                    # )
-                    theta = 3.14 - np.arccos(np.dot(np.squeeze(unit_distance), np.squeeze(unit_plume_normal)))
-
-                    # print('theta', theta)
-
-                    # Calculate face orientation. 
-                    # print('surface normal', target_normals[i])
-                    n = np.squeeze(target_normals[i])
-                    unit_plume = np.squeeze(plume_normal/norm_plume_normal)
-                    surface_dot_plume = np.dot(n, unit_plume)
-                    # print('surface_dot_plume', surface_dot_plume)
-
-                    # print()
-
-                    # Evaluate plume strike logic
-                    within_distance = float(norm_distance) < float(self.environment.config['plume']['radius'])
-                    within_theta = float(theta) < float(self.environment.config['plume']['wedge_theta'])
-                    facing_thruster = surface_dot_plume < 0
-                    
-                    if (within_distance and within_theta and facing_thruster):
-                        cum_strikes[i] = int(cum_strikes[i] + 1)
-                        strikes[i] = strikes[i] + 1
-
-                        # if Simplified gas kinetics model is enabled, get relevant parameters
-                        # pass parameters and thruster info to SimplifiedGasKinetics and record returns of pressures and heat flux
-                        # atm, gas_surface interaction model is not checked, as only one is supported
-                        if self.environment.config['pm']['kinetics'] == "Simplified":
-                            T_w = float(self.environment.config['tv']['surface_temp'])
-                            sigma = float(self.environment.config['tv']['sigma'])
-                            thruster_metrics = self.vv.thruster_metrics[self.vv.thruster_data[thruster_id]['type'][0]]
-                            simple_plume = SimplifiedGasKinetics(norm_distance, theta, thruster_metrics, T_w, sigma)
-                            pressures[i] += simple_plume.get_pressure()
-                            if pressures[i] > max_pressures[i]:
-                                max_pressures[i] = pressures[i]
-
-                            shear_stress = simple_plume.get_shear_pressure()
-                            shear_stresses[i] += abs(shear_stress)
-                            if shear_stresses[i] > max_shears[i]:
-                                max_shears[i] = shear_stresses[i]
-
-                            heat_flux_cur = simple_plume.get_heat_flux()
-                            heat_flux[i] += heat_flux_cur
-                            heat_flux_load[i] += heat_flux_cur * firing_time
-                            cum_heat_flux_load[i] += heat_flux_cur * firing_time
-
-            # Save surface data to be saved at each cell of the STL mesh.  
             cellData = {
                 "strikes": strikes,
-                "cum_strikes": cum_strikes.copy()
+                "cum_strikes": cum_strikes.copy(),
             }
+
+            if kinetics_on:
+                pressures = result.get("pressures")
+                shear_stresses = result.get("shear_stress")
+                heat_flux_rate = result.get("heat_flux_rate")
+                heat_flux_load = result.get("heat_flux_load")
+
+                max_pressures = np.maximum(max_pressures, pressures)
+                max_shears = np.maximum(max_shears, shear_stresses)
+                cum_heat_flux_load = cum_heat_flux_load + heat_flux_load
+
+                cellData.update({
+                    "pressures": pressures,
+                    "max_pressures": max_pressures,
+                    "shear_stress": shear_stresses,
+                    "max_shears": max_shears,
+                    "heat_flux_rate": heat_flux_rate,
+                    "heat_flux_load": heat_flux_load,
+                    "cum_heat_flux_load": cum_heat_flux_load,
+                })
+
             firing_data[str(firing+1)] = cellData
 
             # if checking constraints:
@@ -932,15 +864,6 @@ class RPOD (MissionPlanner):
             #             constraint_file.write(f"Heat flux load reached {heat_flux_window_sums[queue_index]}.\n\n")
             #             failed_constraints = 1
 
-
-            if self.environment.config['pm']['kinetics'] != 'None':
-                cellData["pressures"] = pressures
-                cellData["max_pressures"] = max_pressures
-                cellData["shear_stress"] = shear_stresses
-                cellData["max_shears"] = max_shears
-                cellData["heat_flux_rate"] = heat_flux
-                cellData["heat_flux_load"] = heat_flux_load
-                cellData["cum_heat_flux_load"] = cum_heat_flux_load
 
             path_to_vtk = self.environment.case_dir + "results/strikes/firing-" + str(firing)
 
@@ -1060,14 +983,11 @@ class RPOD (MissionPlanner):
 
             rot.append(np.array(rotation_matrix_from_vectors(x1, y1)))
 
-        #     # constraint_file.close()
-
-        return firing_data
-
+        # After simulating, estimate a coarse time multiplier based on number of firings
         n_firings = len(t)
-        time_multiplier = 10 / n_firings
+        time_multiplier = 10 / n_firings if n_firings > 0 else 1
         # print('n firings:', len(t), 'time multiplier:', time_multiplier)
-        return (1/time_multiplier)
+        return (1 / time_multiplier)
 
         # one_d_results = {
         #     'n_firings': n,
@@ -1083,143 +1003,39 @@ class RPOD (MissionPlanner):
         # print(one_d_results)
 
     def print_jfh_1d_approach_n_fire(self, v_ida, v_o, r_o, n_firings, trade_study = False):
-       # Determine thruster configuration characterstics.
-        # The JFH only contains firings done by the neg_x group
-        m_dot_sum = self.calc_m_dot_sum('neg_x')
-        # print('m_dot_sum is', m_dot_sum)
-        MIB = self.vv.thruster_metrics[self.vv.thruster_data[self.vv.rcs_groups['neg_x'][0]]['type'][0]]['MIB']
-        # print('MIB is', MIB)
-        F_thruster = self.vv.thruster_metrics[self.vv.thruster_data[self.vv.rcs_groups['neg_x'][0]]['type'][0]]['F']
-        F = F_thruster * np.cos(self.vv.decel_cant)
-        n_thrusters = len(self.vv.rcs_groups['neg_x'])
-        F = F * n_thrusters
-        # print('F is', F)
+        # Delegate to approach_maneuvers.compute_1d_approach and rpod.io.write_jfh
+        tm = self.calc_time_multiplier(v_ida, v_o, r_o)
+        inputs = ApproachInputs(v_ida=float(v_ida), v_o=float(v_o), r_o=float(r_o), group='neg_x')
+        # Adapter for grouping methods if not explicitly available as a module
+        class _GroupingAdapter:
+            def __init__(self, outer):
+                self._outer = outer
+            def calc_m_dot_sum(self, group):
+                return self._outer.calc_m_dot_sum(group)
+            def calc_v_e(self, group):
+                return self._outer.calc_v_e(group)
 
-        # Defining a multiplier reduce time steps and make running faster
-        time_multiplier = self.calc_time_multiplier(v_ida, v_o, r_o)
-        dt = (MIB / F_thruster) * time_multiplier
-        # print('dt is', dt)
-        dm_firing = m_dot_sum * dt
-        # print('dm_firing is', dm_firing)
-        docking_mass = self.vv.mass
-        # print('docking mass is', docking_mass)
+        results = compute_1d_approach(
+            inputs=inputs,
+            vv=self.vv,
+            fuel_mgr=self,
+            grouping=_GroupingAdapter(self),
+            cant_rad=self.vv.decel_cant,
+            dt_strategy={"multiplier": tm},
+        )
 
-        # Calculate required change in velocity.
-        dv_req = v_o - v_ida
-        v_e = self.calc_v_e('neg_x')
+        r = [results["x"], results["y"], results["z"]]
+        t_values = results["t"]
+        rot = results["rot"]
 
-
-        # Calculate propellant used for docking and changes in mass.
-        forward_propagation = False
-        delta_mass_jfh = self.calc_delta_mass_v_e(dv_req, v_e, forward_propagation)
-        self.fuel_mass= delta_mass_jfh
-        self.vv.mass = docking_mass
-        # print('delta_mass_docking is',delta_mass_jfh)
-
-        pre_approach_mass = self.vv.mass
-        # print('pre-approach mass is', pre_approach_mass)
-
-        # Instantiate data structure to hold JFH data + physics data.
-        # Initializing position
-        x = [r_o]
-        y = [0]
-        z = [0]
-
-        # Initializing empty tracking lists
-        dx = [0]
-        t = [0]
-        dv = [0]
-
-        # Initializing inertial state
-        dxdt = [v_o]
-
-        # Initializing initial mass
-        mass = [pre_approach_mass]
-
-        # Initializing list to later sum propellant expenditure
-        dm_total = [dm_firing]
-
-        # Firing number
-        n = [1]
-
-        # Create dummy rotation matrices.
-        x1 = [1, 0, 0]
-        y1 = [1, 0, 0]
-
-        rot = [np.array(rotation_matrix_from_vectors(x1, y1))]
-
-        # Calculate JFH and 1D physics data for required firings.
-        while (dv_req > 0):
-            # print('dv_req', round(dv_req, 4), 'n firings', n[i])
-
-            # Grab last value in the JFH arrays (initial conditions for current time step)
-            # print('x, dx, dt, t, dxdt, mass, dm_total')
-            # print(x[-1], dx[-1], dt_vals[-1], t[-1], dxdt[-1], mass[-1], dm_total[-1])
-
-            # Update VV mass per firing
-            mass_o = mass[-1]
-            mass.append(mass_o - dm_firing)
-            mass_f = mass[-1]
-            # print('mass_f is', mass_f)
-
-            # Calculate velocity change per firing.
-            dv_firing = self.calc_delta_v(dt, v_e, m_dot_sum, mass_o)
-            dv.append(dv_firing)
-            # print('dv is', dv_firing)
-            # print(round(dxdt[-1] - dv_firing, 2))
-            # input()
-            dxdt.append(dxdt[-1] - dv_firing)
-
-            # Calculate distance traveled per firing
-            # print(dxdt[-1], dxdt[-2]) # last and second to last element.
-            v_avg = 0.5 * (dxdt[-1] + dxdt[-2])
-            dx.append(v_avg * dt)
-
-            curr_x  = x[-1] - v_avg*dt
-
-            # if curr_x < 0:
-            #     break
-
-            x.append(curr_x)
-            y.append(0)
-            z.append(0)
-
-            # Calculate left over v_req (TERMINATES LOOP)
-            dv_req -= dv_firing
-
-            # Calculate mass expended up to this point.
-            dm_total.append(dm_total[-1] + dm_firing)
-
-            # Calculate current firing.
-            n.append(n[-1]+1)
-
-            # Add time data.
-            t.append(t[-1] + dt)
-
-            rot.append(np.array(rotation_matrix_from_vectors(x1, y1)))
-
-        # one_d_results = {
-        #     'n_firings': n,
-        #     'x': x,
-        #     'dx': dx,
-        #     't': t,
-        #     'dv': dv,
-        #     'v': dxdt,
-        #     'mass': mass,
-        #     'delta_mass': dm_total
-        # }
-
-        # print(one_d_results)
-        # input()
-        r = [x, y, z]
-
-        if trade_study == False:
+        # Build output path as before
+        if not trade_study:
             jfh_path = self.environment.case_dir + 'jfh/' + self.environment.config['jfh']['jfh']
-        elif trade_study == True:
-            jfh_path = self.environment.case_dir +'jfh/' + self.get_case_key() + '.A'
+        else:
+            jfh_path = self.environment.case_dir + 'jfh/' + self.get_case_key() + '.A'
 
-        # print(jfh_path)
-        print_1d_JFH(t, r, rot, jfh_path) 
+        os.makedirs(os.path.dirname(jfh_path), exist_ok=True)
+        write_jfh(t_values, r, rot, jfh_path, mode="1d")
 
 
     def print_jfh_1d_approach(self, v_ida, v_o, r_o, trade_study = False):
@@ -1247,138 +1063,36 @@ class RPOD (MissionPlanner):
             Does the method need to return a status message? or pass similar data?
 
         """
-        # Determine thruster configuration characterstics.
-        # The JFH only contains firings done by the neg_x group
-        m_dot_sum = self.calc_m_dot_sum('neg_x')
-        # print('m_dot_sum is', m_dot_sum)
-        MIB = self.vv.thruster_metrics[self.vv.thruster_data[self.vv.rcs_groups['neg_x'][0]]['type'][0]]['MIB']
-        # print('MIB is', MIB)
-        F = self.vv.thruster_metrics[self.vv.thruster_data[self.vv.rcs_groups['neg_x'][0]]['type'][0]]['F']
-        F = F * np.cos(self.vv.decel_cant)
-        n_thrusters = len(self.vv.rcs_groups['neg_x'])
-        F = F * n_thrusters
-        # print('F is', F)
+        # Delegate to approach_maneuvers with a fixed multiplier similar to legacy
+        inputs = ApproachInputs(v_ida=float(v_ida), v_o=float(v_o), r_o=float(r_o), group='neg_x')
+        class _GroupingAdapter:
+            def __init__(self, outer):
+                self._outer = outer
+            def calc_m_dot_sum(self, group):
+                return self._outer.calc_m_dot_sum(group)
+            def calc_v_e(self, group):
+                return self._outer.calc_v_e(group)
 
-        # Defining a multiplier reduce time steps and make running faster
-        time_multiplier = 60
-        dt = (MIB / F) * time_multiplier
-        # print('dt is', dt)
-        dm_firing = m_dot_sum * dt
-        # print('dm_firing is', dm_firing)
-        docking_mass = self.vv.mass
-        # print('docking mass is', docking_mass)
+        results = compute_1d_approach(
+            inputs=inputs,
+            vv=self.vv,
+            fuel_mgr=self,
+            grouping=_GroupingAdapter(self),
+            cant_rad=self.vv.decel_cant,
+            dt_strategy={"multiplier": 60.0},
+        )
 
-        # Calculate required change in velocity.
-        dv_req = v_o - v_ida
-        v_e = self.calc_v_e('neg_x')
-        forward_propagation = False
+        r = [results["x"], results["y"], results["z"]]
+        t_values = results["t"]
+        rot = results["rot"]
 
-
-        # Calculate propellant used for docking and changes in mass.
-        delta_mass_jfh = self.calc_delta_mass_v_e(dv_req, v_e, forward_propagation)
-        # print('delta_mass_docking is',delta_mass_jfh)
-
-        pre_approach_mass = self.vv.mass
-        # print('pre-approach mass is', pre_approach_mass)
-
-        # Instantiate data structure to hold JFH data + physics data.
-        # Initializing position
-        x = [r_o]
-        y = [0]
-        z = [0]
-
-        # Initializing empty tracking lists
-        dx = [0]
-        t = [0]
-        dv = [0]
-
-        # Initializing inertial state
-        dxdt = [v_o]
-
-        # Initializing initial mass
-        mass = [pre_approach_mass]
-
-        # Initializing list to later sum propellant expenditure
-        dm_total = [dm_firing]
-
-        # Firing number
-        n = [1]
-
-        # Create dummy rotation matrices.
-        x1 = [1, 0, 0]
-        y1 = [1, 0, 0]
-
-        rot = [np.array(rotation_matrix_from_vectors(x1, y1))]
-
-        # Calculate JFH and 1D physics data for required firings.
-        while (dv_req > 0):
-            # print('dv_req', round(dv_req, 4), 'n firings', n[i])
-
-            # Grab last value in the JFH arrays (initial conditions for current time step)
-            # print('x, dx, dt, t, dxdt, mass, dm_total')
-            # print(x[-1], dx[-1], dt_vals[-1], t[-1], dxdt[-1], mass[-1], dm_total[-1])
-
-            # Update VV mass per firing
-            mass_o = mass[-1]
-            mass.append(mass_o - dm_firing)
-            mass_f = mass[-1]
-            # print('mass_f is', mass_f)
-
-            # Calculate velocity change per firing.
-            dv_firing = self.calc_delta_v(dt, v_e, m_dot_sum, mass_o)
-            dv.append(dv_firing)
-            # print('dv is', dv_firing)
-            # print(round(dxdt[-1] - dv_firing, 2))
-            # input()
-            dxdt.append(dxdt[-1] - dv_firing)
-
-            # Calculate distance traveled per firing
-            # print(dxdt[-1], dxdt[-2]) # last and second to last element.
-            v_avg = 0.5 * (dxdt[-1] + dxdt[-2])
-            dx.append(v_avg * dt)
-            x.append(x[-1] - v_avg*dt)
-            y.append(0)
-            z.append(0)
-
-            # Calculate left over v_req (TERMINATES LOOP)
-            dv_req -= dv_firing
-
-            # Calculate mass expended up to this point.
-            dm_total.append(dm_total[-1] + dm_firing)
-
-            # Calculate current firing.
-            n.append(n[-1]+1)
-
-            # Add time data.
-            t.append(t[-1] + dt)
-
-            rot.append(np.array(rotation_matrix_from_vectors(x1, y1)))
-
-        # one_d_results = {
-        #     'n_firings': n,
-        #     'x': x,
-        #     'dx': dx,
-        #     't': t,
-        #     'dv': dv,
-        #     'v': dxdt,
-        #     'mass': mass,
-        #     'delta_mass': dm_total
-        # }
-
-        # print(one_d_results)
-        # input()
-        r = [x, y, z]
-
-        if trade_study == False:
+        if not trade_study:
             jfh_path = self.environment.case_dir + 'jfh/' + self.environment.config['jfh']['jfh']
-        elif trade_study == True:
-            jfh_path = self.environment.case_dir +'jfh/' + self.get_case_key() + '.A'
+        else:
+            jfh_path = self.environment.case_dir + 'jfh/' + self.get_case_key() + '.A'
 
-        # print(jfh_path)
-        print_1d_JFH(t, r, rot, jfh_path)
-
-        # self.
-
+        os.makedirs(os.path.dirname(jfh_path), exist_ok=True)
+        write_jfh(t_values, r, rot, jfh_path, mode="1d")
         return
 
     def edit_1d_JFH(self, t_values, r,  rot):
@@ -1477,141 +1191,31 @@ class RPOD (MissionPlanner):
             Does the method need to return a status message? or pass similar data?
 
         """
-        # Determine thruster configuration characterstics.
-        # The JFH only contains firings done by the neg_x group
-        m_dot_sum = self.calc_m_dot_sum('neg_x')
-        # print('m_dot_sum is', m_dot_sum)
-        MIB = self.vv.thruster_metrics[self.vv.thruster_data[self.vv.rcs_groups['neg_x'][0]]['type'][0]]['MIB']
-        # print('MIB is', MIB)
+        # Delegate to compute-first API, then update in-memory JFH via existing helper
         MissionPlanner.cant = np.radians(cant)
-        F = np.cos(MissionPlanner.cant) * self.vv.thruster_metrics[self.vv.thruster_data[self.vv.rcs_groups['neg_x'][0]]['type'][0]]['F']
-        # print('F is', F)
+        inputs = ApproachInputs(v_ida=float(v_ida), v_o=float(v_o), r_o=0.0, group='neg_x')
 
+        class _GroupingAdapter:
+            def __init__(self, outer):
+                self._outer = outer
+            def calc_m_dot_sum(self, group):
+                return self._outer.calc_m_dot_sum(group)
+            def calc_v_e(self, group):
+                return self._outer.calc_v_e(group)
 
+        results = compute_1d_approach(
+            inputs=inputs,
+            vv=self.vv,
+            fuel_mgr=self,
+            grouping=_GroupingAdapter(self),
+            cant_rad=MissionPlanner.cant,
+            dt_strategy={"multiplier": 100.0},
+        )
 
-        # IMPORTANT IMPORTANT IMPORTANT IMPORTANT IMPORTANT
-        # Defining a multiplier reduce time steps and make running faster
-        time_multiplier = 100
-        # Multiplying by cant to make time step independent of it, this cancels it out in the F term
-        self.dt = (MIB / F) * time_multiplier * np.cos(MissionPlanner.cant)
-        # print('dt is', dt)
-        dm_firing = m_dot_sum * self.dt
-        # print('dm_firing is', dm_firing)
-        docking_mass = self.vv.mass
-        # print('docking mass is', docking_mass)
-
-        # Calculate required change in velocity.
-        dv_req = v_o - v_ida
-        v_e = self.calc_v_e('neg_x')
-        forward_propagation = False
-
-        # Calculate propellant used for docking and changes in mass.
-        # Since this is already done by calc_total_delta_mass, the LM's mass
-            # needs to be reset to docking_mass otherwise the propellant
-            # expenditure for the JFH is counted twice
-        delta_mass_jfh = self.calc_delta_mass_v_e(dv_req, v_e, forward_propagation)
-        # print('delta_mass_docking is',delta_mass_jfh)
-        self.vv.mass = docking_mass
-        # print('self.vv.mass is', self.vv.mass)
-
-        pre_approach_mass = self.vv.mass + delta_mass_jfh
-        # print('pre-approach mass is', pre_approach_mass)
-
-        # Instantiate data structure to hold JFH data + physics data.
-        # Initializing position
-        x = [0]
-        y = [0]
-        z = [0]
-
-        # Initializing empty tracking lists
-        dx = [0]
-        t = [0]
-        dv = [0]
-
-        # Initializing inertial state
-        dxdt = [v_o]
-
-        # Initializing initial mass
-        mass = [pre_approach_mass]
-
-        # Initializing list to later sum propellant expenditure
-        dm_total = [dm_firing]
-
-        # Firing number
-        n = [1]
-
-        # Create dummy rotation matrices.
-        x1 = [1, 0, 0]
-        y1 = [1, 0, 0]
-
-        rot = [np.array(rotation_matrix_from_vectors(x1, y1))]
-
-        # Calculate JFH and 1D physics data for required firings.
-        while (dv_req > 0):
-            # print('dv_req', round(dv_req, 4), 'n firings', n[i])
-
-            # Grab last value in the JFH arrays (initial conditions for current time step)
-            # print('x, dx, dt, t, dxdt, mass, dm_total')
-            # print(x[-1], dx[-1], dt_vals[-1], t[-1], dxdt[-1], mass[-1], dm_total[-1])
-
-            # Update VV mass per firing
-            mass_o = mass[-1]
-            mass.append(mass_o - dm_firing)
-            mass_f = mass[-1]
-            # print('mass_f is', mass_f)
-
-            # Calculate velocity change per firing.
-            dv_firing = self.calc_delta_v(self.dt, v_e, m_dot_sum, mass_o)
-            dv.append(dv_firing)
-            # print('dv is', dv_firing)
-            # print(round(dxdt[-1] - dv_firing, 2))
-            # input()
-            dxdt.append(dxdt[-1] - dv_firing)
-
-            # Calculate distance traveled per firing
-            # print(dxdt[-1], dxdt[-2]) # last and second to last element.
-            v_avg = 0.5 * (dxdt[-1] + dxdt[-2])
-            dx.append(v_avg * self.dt)
-            x.append(x[-1] + v_avg * self.dt)
-            y.append(0)
-            z.append(0)
-
-            # Calculate left over v_req (TERMINATES LOOP)
-            dv_req -= dv_firing
-
-            # Calculate mass expended up to this point.
-            dm_total.append(dm_total[-1] + dm_firing)
-
-            # Calculate current firing.
-            n.append(n[-1] + 1)
-
-            # Add time data.
-            t.append(t[-1] + self.dt)
-
-            rot.append(np.array(rotation_matrix_from_vectors(x1, y1)))
-
-        # print('x is', x)
-
-        # print('dm_total is', dm_total[-1])
-
-        # one_d_results = {
-        #     'n_firings': n,
-        #     'x': x,
-        #     'dx': dx,
-        #     't': t,
-        #     'dv': dv,
-        #     'v': dxdt,
-        #     'mass': mass,
-        #     'delta_mass': dm_total
-        # }
-
-        # print(one_d_results)
-
-        r = [x, y, z]
-
-        jfh_path = self.environment.case_dir + 'jfh/' + self.environment.config['jfh']['jfh']
-        # print(jfh_path)
-        self.edit_1d_JFH(t, r, rot)
+        t_values = results["t"]
+        r = [results["x"], results["y"], results["z"]]
+        rot = results["rot"]
+        self.edit_1d_JFH(t_values, r, rot)
 
     def get_case_key(self):
         return self.case_key

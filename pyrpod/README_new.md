@@ -1,4 +1,3 @@
-
 # Project Overview
 
 This repository contains a set of Python modules for mission planning, vehicle simulations, plume modeling, and utility functions for aerospace research and development. The modules are organized into directories based on functionality and purpose.
@@ -54,6 +53,26 @@ To apply transformations to STL files:
 
 ### Testing
 Run tests using the `config_test.py` or dedicated test cases provided for each module.
+
+## Logging
+
+We use Python's logging across modules.
+
+- Get a logger:
+  - from pyrpod.logging_utils import get_logger
+  - logger = get_logger("pyrpod.<package>.<module>")
+- Default level: INFO. Override via env var (PowerShell):
+  - $env:PYRPOD_LOG_LEVEL = "DEBUG"
+- Customize format via env var:
+  - $env:PYRPOD_LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+
+Example:
+
+```python
+from pyrpod.logging_utils import get_logger
+logger = get_logger("pyrpod.example")
+logger.info("Hello from PyRPOD")
+```
 
 ## Adding New Modules
 1. Place new scripts in the relevant directory.

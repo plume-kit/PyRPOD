@@ -1,3 +1,10 @@
+import numpy as np
+import matplotlib.pyplot as plt
+from pyrpod.logging_utils import get_logger
+
+logger = get_logger(__name__)
+
+
 class PostProcessor:
     def __init__(self):
         pass
@@ -113,7 +120,7 @@ class PostProcessor:
         for v in dv:
             # print(type(v[1]))
             dv = v[1][1]
-            print()
+            logger.debug('Processing dv entry in flight plan')
             burn_time = []
             for thrust in thrust_range:
                 burn_time.append(abs(self.calc_burn_time(dv, isp, thrust)))

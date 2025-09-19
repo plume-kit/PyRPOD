@@ -1,4 +1,8 @@
 from pyrpod.orbital import HohmannTransfer
+from astropy import units as u
+from pyrpod.logging_utils import get_logger
+
+logger = get_logger("pyrpod.mission.orbital_transfer")
 
 class OrbitalTransferEngine:
     def __init__(self):
@@ -28,8 +32,7 @@ class OrbitalTransferEngine:
         transfer = HohmannTransfer.HohmannTransfer(h1_km, h2_km, leg_id)
         result = transfer._compute_transfer()
         if leg_id:
-            print(leg_id)
-            print(result)
+            logger.info("Hohmann leg %s: %s", leg_id, result)
             result['leg_id'] = leg_id
         self.hohmann_transfers.append(result)
 
@@ -38,9 +41,16 @@ class OrbitalTransferEngine:
         Prints a summary of all stored Hohmann transfers.
         """
         for i, t in enumerate(self.hohmann_transfers):
-            print(f"Leg {i+1} ({t.get('leg_id', 'unnamed')}):")
-            print(f"  Δv1 = {t['dv1']:.3f} km/s, Δv2 = {t['dv2']:.3f} km/s")
-            print(f"  Total Δv = {t['dv_total']:.3f} km/s")
-            print(f"  Time of Flight = {t['tof'] / 60:.2f} hours\n")
+            dv1 = t['dv1'].to_value(u.km / u.s)
+            dv2 = t['dv2'].to_value(u.km / u.s)
+            dv_total = t['dv_total'].to_value(u.km / u.s)
+            tof_hours = t['tof'].to_value(u.hour)
+
+            logger.info(
+                "Leg %s (%s): dv1=%.3f km/s, dv2=%.3f km/s, dv_total=%.3f km/s, ToF=%.2f hours",
+                i + 1,
+                t.get('leg_id', 'unnamed'),
+                dv1, dv2, dv_total, tof_hours,
+            )
 
 

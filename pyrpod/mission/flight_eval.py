@@ -2,8 +2,9 @@ import pandas as pd
 import numpy as np
 
 from pyrpod.mission.SubModule import SubModule
+from pyrpod.mission.six_dof_dynamics import SixDOFDynamics
 
-class FlightEvaluator(SubModule):
+class FlightEvaluator(SubModule, SixDOFDynamics):
         # self.maneuvers = []
 
     def load_plan(self):
@@ -131,59 +132,7 @@ class FlightEvaluator(SubModule):
         return self.v_desired - self.v_current, self.w_desired - self.w_current
 
 
-    def calc_trans_performance(self, motion, dv):
-        """
-            Calculates RCS performance according to thruster working groups for a direction of motion.
-
-            This method assumes constant mass, which needs to be addressed.
-
-            Needs better name?
-
-            Parameters
-            ----------
-            dv : float
-                Speficied change in velocity value.
-
-            motion : str
-                Directionality of motion. Used to select active thrusters.
-
-            Returns
-            -------
-            time : float
-                Burn time elapsed.
-
-            distance : float
-                Distance covered during burn time.
-
-            propellant_used : float
-                Propellant used during burn time.
-        """
-        # Calculate RCS performance according to thrusters grouped to be in the direction.
-        # WIP: Initial code executes simple 1DOF calculations
-        # print(type(self.vv))
-        # print(self.vv)
-        if self.vv.rcs_groups == None:
-            # print("WARNING: Thruster Grouping File not Set")
-            return
-
-        n_thrusters = len(self.vv.rcs_groups[motion])
-        total_thrust = n_thrusters * self.vv.thrust
-        acceleration = total_thrust / self.vv.mass
-        # print(acceleration)
-        time = abs(dv) / acceleration
-        distance = 0.5 * abs(dv) * time
-        m_dot = total_thrust / self.vv.isp
-        propellant_used = m_dot * time
-
-        # Print info to screen (TODO: write this to a data structure)
-        p = 2 # how many decimals places to print
-        # print('Total thrust produced', round(total_thrust, p), 'N')
-        # print('Resulting accelration', round(acceleration, p), 'm / s ^ 2')
-        # print('Time required', round(time, p), 's')
-        # print('Distance Covered', round(distance, p), 'm')
-        # print('Total propellant used', round(propellant_used, p), 'kg')
-
-        return time, distance, propellant_used
+    # calc_trans_performance is inherited from SixDOFDynamics
 
     def calc_6dof_performance(self):
         """
