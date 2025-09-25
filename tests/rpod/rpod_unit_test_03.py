@@ -39,7 +39,7 @@ class CaptureJFHOutputs(unittest.TestCase):
 			[0.0, 1.0, 0.0],
 			[0.0, 0.0, 1.0],
 		])
-		self.rot_with_A = [np.matrix(base_rot) for _ in range(3)]
+		self.rot_with_A = [np.array(base_rot) for _ in range(3)]
 
 		# For print_1d_JFH, rot[i][j][k] indexing is used with scientific formatting
 		self.rot_array = [base_rot.copy() for _ in range(3)]
