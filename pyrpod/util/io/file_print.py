@@ -61,7 +61,7 @@ def print_JFH(t_values, r,  rot, file_name):
             # Print elements of rotation matrix
             for j in range(3):
                 for k in range(3):
-                    print(round(rot[i].A[j][k], p), end = ' ')
+                    print(round(rot[i][j][k], p), end = ' ')
 
             # Print position values. 
             print(round(x[i], p), round(y[i], p), round(z[i], p), end = '   ')
@@ -144,7 +144,7 @@ def print_test_JFH(t_values, r,  rot, file_name):
             # Print elements of rotation matrix
             for j in range(3):
                 for k in range(3):
-                    print(round(rot[i].A[j][k], p), end = ' ')
+                    print(round(rot[i][j][k], p), end = ' ')
 
             # Print position values. 
             print(round(x[i], p), round(y[i], p), round(z[i], p), end = '   ')

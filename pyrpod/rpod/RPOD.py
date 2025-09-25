@@ -12,6 +12,7 @@ from pyrpod.plume.RarefiedPlumeGasKinetics import SimplifiedGasKinetics
 
 from pyrpod.util.io.file_print import print_1d_JFH
 from pyrpod.util.io.fs import ensure_dir
+from pyrpod.util.stl.stl import load_stl, transform_mesh
 
 from tqdm import tqdm
 from queue import Queue
@@ -192,7 +193,7 @@ class RPOD (MissionPlanner):
             thrusters = self.jfh.JFH[firing]['thrusters']
             
             # Load and graph STL of visting vehicle.  
-            VVmesh = mesh.Mesh.from_file('../stl/cylinder.stl')
+            VVmesh = load_stl('../stl/cylinder.stl')
 
             figure = plt.figure()
             # axes = mplot3d.Axes3D(figure)
@@ -201,26 +202,36 @@ class RPOD (MissionPlanner):
  
             # Load and graph STLs of active thrusters. 
             for thruster in thrusters:
-                # Load plume STL in initial configuration. 
-                plumeMesh = mesh.Mesh.from_file('../stl/mold_funnel.stl')
-                plumeMesh.translate([0, 0, -50])
-                plumeMesh.rotate([1, 0, 0], math.radians(180)) 
-                plumeMesh.points = 0.05 * plumeMesh.points
-
-                # Transform according to DCM and exit vector for current thruster in VTDF
-                logger.debug("Active thruster mapped id: %s", link.get(str(thruster)))
+                # Map thruster ID
                 thruster_id = link[str(thruster)][0]
-                thruster_orientation = np.matrix(
-                    self.vv.thruster_data[thruster_id]['dcm']
+
+                # Load plume STL in initial configuration.
+                plumeMesh = load_stl('../stl/mold_funnel.stl')
+
+                # Tranform plume into initial configuration.
+                # TODO: edit mold_funnel.stl to not require these transforms.
+                rot_mat = np.array([
+                    [1, 0, 0],
+                    [0, -1, 0],
+                    [0, 0, -1],
+                ])
+                plumeMesh = transform_mesh(
+                    plumeMesh,
+                    rotation_matrix=rot_mat,
+                    translation_vector=[0, 0, -50],
+                    scale_factor=0.05
                 )
 
-                plumeMesh.rotate_using_matrix(thruster_orientation.transpose())
-                plumeMesh.translate(self.vv.thruster_data[thruster_id]['exit'][0])
-
+                # Transform plume according to thruster and VV configuration.
+                plumeMesh = transform_mesh(
+                    plumeMesh,
+                    rotation_matrix=np.array(self.vv.thruster_data[thruster_id]['dcm']).T,
+                    translation_vector=self.vv.thruster_data[thruster_id]['exit'][0]
+                )
 
                 logger.debug("Thruster %s DCM: %s", thruster_id, self.vv.thruster_data[thruster_id]['dcm'])
 
-                # Add surface to graph. 
+                # Add surface to graph.
                 surface = mplot3d.art3d.Poly3DCollection(plumeMesh.vectors)
                 surface.set_facecolor('orange')
                 axes.add_collection3d(surface)

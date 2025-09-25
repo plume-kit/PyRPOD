@@ -178,8 +178,17 @@ class VisitingVehicle(Vehicle):
     """
 
     def print_info(self):
-        """Simple method to format printing of vehicle info."""
+        """
+            Simple method to format printing of vehicle info.
 
+            Parameters
+            ----------
+            None
+
+            Returns
+            -------
+            None
+        """
         logger.info('number of thrusters: %s', self.num_thrusters)
         logger.info('thruster units: %s', self.thruster_units)
         logger.info('center of gravity: %s', self.cog)
@@ -407,27 +416,6 @@ class VisitingVehicle(Vehicle):
 
         return
 
-
-    def print_info(self):
-        """
-            Simple method to format printing of vehicle info.
-        
-            Parameters
-            ----------
-            None
-
-            Returns
-            -------
-            None
-        """
-
-        logger.info('number of thrusters: %s', self.num_thrusters)
-        logger.info('thruster units: %s', self.thruster_units)
-        logger.info('center of gravity: %s', self.cog)
-        logger.info('grapple coordinate: %s', self.grapple)
-        logger.info('number of dual jet interactions: %s', self.jet_interactions)
-        return
-
     def initiate_plume_mesh(self):
         """
             Helper method that reads in surface mesh for plume clone.
@@ -468,8 +456,8 @@ class VisitingVehicle(Vehicle):
                 Surface mesh constructed from STL file in transformed orientation.
 
         """
-        rot = np.matrix(self.thruster_data[thruster_id]['dcm'])
-        plumeMesh.rotate_using_matrix(np.matrix(rot).transpose())
+        rot = np.array(self.thruster_data[thruster_id]['dcm'])
+        plumeMesh.rotate_using_matrix(rot.T)
         plumeMesh.translate(self.thruster_data[thruster_id]['exit'][0])
         return plumeMesh
 
