@@ -3,8 +3,8 @@ import numpy as np
 import os
 import configparser
 
-from pyevtk.hl import unstructuredGridToVTK
 from pyevtk.vtk import VtkTriangle, VtkQuad
+from pyrpod.util.stl.stl import convert_stl_to_vtk
 
 class Vehicle:
     """
@@ -70,81 +70,10 @@ class Vehicle:
         #     print("mesh is not set. Please load using self.set_stl() method")
         #     return
 
-        if mesh == None:
-            surface = self.mesh
-        else:
-            surface = mesh
-
-        # print("printing STL surface", surface)
-
-        test_path_to_vtk = self.case_dir + 'results/'
-
-        # Create results directory if it doesn't already exist.
-        results_dir = test_path_to_vtk
-        if not os.path.isdir(results_dir):
-            # print("results dir doesn't exist")
-            os.mkdir(results_dir)
-
-
-        # print(self.path_to_stl)
-
-        FILE_PATH = self.path_to_stl.split('/')[-1]
-        FILE_PATH = FILE_PATH.split('.')[0]
-        FILE_PATH = path_to_vtk + FILE_PATH
-        # print(FILE_PATH)
-
-        # print(len(surface.vectors))
-
-        # Create lists to store coordinate and connectivity data.
-        faces = surface.vectors
-        n_faces = len(faces)
-        # print("number of faces in the STL mesh", n_faces)
-        x = []
-        y = []
-        z = []
-
-        # Define connectivity for each vertice
-        conn = []
-
-        # Loop through every face in the STL geometry.
-        # Append coordinate data and necessary connectivity.
-        i = 0
-        for face in faces:
-            for vertice in face:
-                x.append(vertice[0])
-                y.append(vertice[1])
-                z.append(vertice[2])
-                conn.append(i)
-                i+=1
-        
-        # print("number of vertices in the mesh", i+1)
-
-        # Convert to numpy arrays.
-        x = np.array(x)
-        y = np.array(y)
-        z = np.array(z)
-        conn = np.array(conn)
-        # print(conn, len(conn))
-
-        # Define offset of last vertex of each element
-        offset = []
-        offset_val = 3
-        for face in range(int(n_faces)):
-            offset.append(offset_val)
-            offset_val = offset_val + 3
-        offset = np.array(offset)
-        # print(offset, len(offset))
-
-        # Define cell types
-        ctype = np.zeros(n_faces)
-        ctype.fill(VtkTriangle.tid)
-
-        if cellData == None:
-            # Create dummy surface data.
-            cellData = {"strikes" : np.zeros(len(surface.vectors))}
-
-
-        unstructuredGridToVTK(path_to_vtk, x, y, z, connectivity = conn, offsets = offset, cell_types = ctype, cellData = cellData)
+        surface = self.mesh if mesh is None else mesh
+        # Ensure output directory exists and derive base filename
+        out_dir = self.case_dir + 'results/'
+        convert_stl_to_vtk(surface, out_dir, filename=path_to_vtk, cellData=cellData)
         return
 
 
@@ -164,73 +93,12 @@ class Vehicle:
         """
 
         surface = self.mesh
-
-        # print("printing STL surface", surface)
-
-        path_to_vtk = self.case_dir + 'results/'
-
-        # Create results directory if it doesn't already exist.
-        results_dir = path_to_vtk
-        if not os.path.isdir(results_dir):
-            # print("results dir doesn't exist")
-            os.mkdir(results_dir)
-
-
-        # print(self.path_to_stl)
-
-        FILE_PATH = self.path_to_stl.split('/')[-1]
-        FILE_PATH = FILE_PATH.split('.')[0]
-        FILE_PATH = path_to_vtk + FILE_PATH
-        # print(FILE_PATH)
-
-        # print(len(surface.vectors))
-
-        # Create lists to store coordinate and connectivity data.
-        faces = surface.vectors
-        n_faces = len(faces)
-        # print("number of faces in the STL mesh", n_faces)
-        x = []
-        y = []
-        z = []
-
-        # Define connectivity for each vertice
-        conn = []
-
-        # Loop through every face in the STL geometry.
-        # Append coordinate data and necessary connectivity.
-        i = 0
-        for face in faces:
-            for vertice in face:
-                x.append(vertice[0])
-                y.append(vertice[1])
-                z.append(vertice[2])
-                conn.append(i)
-                i+=1
-        
-        # print("number of vertices in the mesh", i+1)
-
-        # Convert to numpy arrays.
-        x = np.array(x)
-        y = np.array(y)
-        z = np.array(z)
-        conn = np.array(conn)
-        # print(conn, len(conn))
-
-        # Define offset of last vertex of each element
-        offset = []
-        offset_val = 3
-        for face in range(int(n_faces)):
-            offset.append(offset_val)
-            offset_val = offset_val + 3
-        offset = np.array(offset)
-        # print(offset, len(offset))
-
-        # Define cell types
-        ctype = np.zeros(n_faces)
-        ctype.fill(VtkTriangle.tid)
-
-        cellData = {"strikes" : np.zeros(len(surface.vectors))}
-
-
-        unstructuredGridToVTK(FILE_PATH, x, y, z, connectivity = conn, offsets = offset, cell_types = ctype, cellData = cellData)
+        out_dir = self.case_dir + 'results/'
+        # Default cell data
+        cellData = {"strikes": np.zeros(len(surface.vectors))}
+        # Derive filename from path_to_stl if available
+        filename = None
+        if hasattr(self, 'path_to_stl') and self.path_to_stl:
+            filename = self.path_to_stl.split('/')[-1].split('.')[0]
+        convert_stl_to_vtk(surface, out_dir, filename=filename, cellData=cellData)
         return

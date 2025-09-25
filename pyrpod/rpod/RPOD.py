@@ -12,7 +12,7 @@ from pyrpod.plume.RarefiedPlumeGasKinetics import SimplifiedGasKinetics
 
 from pyrpod.util.io.file_print import print_1d_JFH
 from pyrpod.util.io.fs import ensure_dir
-from pyrpod.util.stl import load_stl, transform_mesh
+from pyrpod.util.stl.stl import load_stl, transform_mesh
 
 from tqdm import tqdm
 from queue import Queue
