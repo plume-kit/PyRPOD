@@ -90,14 +90,8 @@ class LogisticsModule(VisitingVehicle):
             convert_stl_to_vtk(cellData, mesh)
                 Converts STL mesh to a VTK file and attaches surface properties supplied in cellData.
         """
-        # Set internal reference to directory for case data.
-        self.case_dir = case_dir
-
-        # Set configuration data for study.
-        config = configparser.ConfigParser()
-        config.read(self.case_dir + "config.ini")
-        self.config = config
-        # print(self.config)
+        # Delegate initialization to parent to avoid duplicating config reading
+        super().__init__(case_dir)
 
     def set_inertial_props(self, mass, height, radius):
         """
