@@ -15,13 +15,14 @@ import unittest, os
 import numpy as np
 
 from pyrpod.util.io import file_print as fp
+from pyrpod.util.io.fs import ensure_dir
 
 
 class CaptureJFHOutputs(unittest.TestCase):
 	def setUp(self):
 		# Output directory for captured files (kept within tests tree)
 		self.out_dir = os.path.join(os.path.dirname(__file__), 'jfh_outputs')
-		os.makedirs(self.out_dir, exist_ok=True)
+		ensure_dir(self.out_dir)
 
 		# Deterministic sample data used across all captures
 		# Three firings, simple linear times, simple positions, and rotation matrices

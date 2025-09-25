@@ -11,6 +11,7 @@ from pyrpod.mission.MissionPlanner import MissionPlanner
 from pyrpod.plume.RarefiedPlumeGasKinetics import SimplifiedGasKinetics
 
 from pyrpod.util.io.file_print import print_1d_JFH
+from pyrpod.util.io.fs import ensure_dir
 
 from tqdm import tqdm
 from queue import Queue
@@ -72,7 +73,7 @@ class RPOD (MissionPlanner):
 
         update_window_queue(self, window_queue, cur_window, firing_time, window_size)
             Takes the most recent window of time size, and adds the new firing time to the sum, and the window_queue.
-            If the new window is larger than the allowed window_size, then earleist firing times are removed
+            If the new window is larger than the allowed window_size, then earliest firing times are removed
             from the queue and subtracted from the cur_window sum, until the sum fits within the window size.
             A counter for how many firing times are removed and subtracted is recorded.
 
@@ -575,7 +576,7 @@ class RPOD (MissionPlanner):
     # def update_window_queue(self, window_queue, cur_window, firing_time, window_size):
     #     """
     #         Takes the most recent window of time size, and adds the new firing time to the sum, and the window_queue.
-    #         If the new window is larger than the allowed window_size, then earleist firing times are removed
+    #         If the new window is larger than the allowed window_size, then earliest firing times are removed
     #         from the queue and subtracted from the cur_window sum, until the sum fits within the window size.
     #         A counter for how many firing times are removed and subtracted is recorded.
 
@@ -642,7 +643,7 @@ class RPOD (MissionPlanner):
         """
         sub_dirs = ['results', 'results/strikes', 'results/jfh']
         for sub_dir in sub_dirs:
-            os.makedirs(os.path.join(self.environment.case_dir, sub_dir), exist_ok=True)
+            ensure_dir(os.path.join(self.environment.case_dir, sub_dir))
 
     def set_strike_fields(self, target):
         # Initiate array containing cummulative strikes. 

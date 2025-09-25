@@ -11,14 +11,15 @@ Keep logic thin and parameterized; do not compute physics here.
 from __future__ import annotations
 
 import os
-from typing import Any, Dict, Sequence
+from typing import Any, Sequence
 
 from pyrpod.util.io.file_print import print_JFH, print_1d_JFH
+from pyrpod.util.io.fs import ensure_dir
 
 
 def ensure_results_dirs(case_dir: str, subdirs: Sequence[str] = ("results", "results/strikes", "results/jfh")) -> None:
     for sub in subdirs:
-        os.makedirs(os.path.join(case_dir, sub), exist_ok=True)
+        ensure_dir(os.path.join(case_dir, sub))
 
 
 def save_mesh_to_stl(mesh_obj: Any, path: str) -> None:
