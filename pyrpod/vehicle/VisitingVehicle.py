@@ -468,8 +468,8 @@ class VisitingVehicle(Vehicle):
                 Surface mesh constructed from STL file in transformed orientation.
 
         """
-        rot = np.matrix(self.thruster_data[thruster_id]['dcm'])
-        plumeMesh.rotate_using_matrix(np.matrix(rot).transpose())
+        rot = np.array(self.thruster_data[thruster_id]['dcm'])
+        plumeMesh.rotate_using_matrix(rot.T)
         plumeMesh.translate(self.thruster_data[thruster_id]['exit'][0])
         return plumeMesh
 

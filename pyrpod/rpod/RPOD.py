@@ -210,11 +210,11 @@ class RPOD (MissionPlanner):
                 # Transform according to DCM and exit vector for current thruster in VTDF
                 logger.debug("Active thruster mapped id: %s", link.get(str(thruster)))
                 thruster_id = link[str(thruster)][0]
-                thruster_orientation = np.matrix(
+                thruster_orientation = np.array(
                     self.vv.thruster_data[thruster_id]['dcm']
                 )
 
-                plumeMesh.rotate_using_matrix(thruster_orientation.transpose())
+                plumeMesh.rotate_using_matrix(thruster_orientation.T)
                 plumeMesh.translate(self.vv.thruster_data[thruster_id]['exit'][0])
 
 

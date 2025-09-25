@@ -224,9 +224,9 @@ class JetFiringHistory:
 
             # Calculate require rotation matrix from initial orientation.
             x1 = [1, 0, 0]
-            rot = np.matrix(rotation_matrix_from_vectors(x1, dr))
+            rot = np.array(rotation_matrix_from_vectors(x1, dr))
 
-            VV.rotate_using_matrix(rot.transpose())
+            VV.rotate_using_matrix(rot.T)
             VV.translate(r)
 
             ax.add_collection3d(
