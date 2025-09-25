@@ -407,27 +407,6 @@ class VisitingVehicle(Vehicle):
 
         return
 
-
-    def print_info(self):
-        """
-            Simple method to format printing of vehicle info.
-        
-            Parameters
-            ----------
-            None
-
-            Returns
-            -------
-            None
-        """
-
-        logger.info('number of thrusters: %s', self.num_thrusters)
-        logger.info('thruster units: %s', self.thruster_units)
-        logger.info('center of gravity: %s', self.cog)
-        logger.info('grapple coordinate: %s', self.grapple)
-        logger.info('number of dual jet interactions: %s', self.jet_interactions)
-        return
-
     def initiate_plume_mesh(self):
         """
             Helper method that reads in surface mesh for plume clone.
