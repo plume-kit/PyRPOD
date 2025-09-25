@@ -1,0 +1,26 @@
+[tool.black]
+line-length = 88
+target-version = ["py311"]
+skip-string-normalization = false
+
+[tool.ruff]
+line-length = 88
+extend-ignore = ["E203", "W503"]
+# recommended rule groups; adjust to taste
+select = ["E", "F", "W", "C90", "I", "B"]
+
+[tool.isort]
+profile = "black"
+line_length = 88
+
+[tool.mypy]
+python_version = "3.11"
+strict = false
+ignore_missing_imports = true
+show_error_codes = true
+
+[tool.ruff.per-file-ignores]
+# Ignore some noisy rules in tests and generated files
+"tests/**" = ["D", "S101"]
+"**/__pycache__/**" = ["ALL"]
+"venv-pyrpod/**" = ["ALL"]
