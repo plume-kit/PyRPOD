@@ -2,7 +2,6 @@ matplotlib
 sympy
 meshio
 numpy-stl
-epyvtk
 pyevtk
 pandas
 astropy
