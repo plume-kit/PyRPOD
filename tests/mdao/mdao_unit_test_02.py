@@ -20,7 +20,7 @@ import test_header
 import unittest, os, sys
 import numpy as np
 
-from pyrpod.rpod import JetFiringHistory, RPOD
+from pyrpod.rpod import JetFiringHistory, PlumeStrikeEstimationStudy
 from pyrpod.vehicle import TargetVehicle, VisitingVehicle
 from pyrpod.mdao import SweepConfig
 

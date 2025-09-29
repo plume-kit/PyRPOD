@@ -12,7 +12,7 @@ import test_header
 import unittest, os, sys
 
 from pyrpod.vehicle import LogisticsModule, TargetVehicle, VisitingVehicle
-from pyrpod.rpod import RPOD, JetFiringHistory
+from pyrpod.rpod import JetFiringHistory, PlumeStrikeEstimationStudy
 from pyrpod.mission import MissionEnvironment
 
 class LoadSTLModels(unittest.TestCase):
@@ -45,7 +45,7 @@ class LoadSTLModels(unittest.TestCase):
         me = MissionEnvironment.MissionEnvironment(case_dir)
 
         # Instantiate RPOD object.
-        rpod = RPOD.RPOD(me)
+        rpod = PlumeStrikeEstimationStudy.RPOD(me)
         # Initiate RPOD study.
         rpod.study_init(jfh, tv, vv)
         # Load STLs in Paraview

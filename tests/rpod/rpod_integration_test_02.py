@@ -16,7 +16,7 @@ import test_header
 import unittest, os, sys
 
 from pyrpod.vehicle import LogisticsModule, TargetVehicle
-from pyrpod.rpod import RPOD, JetFiringHistory
+from pyrpod.rpod import JetFiringHistory, PlumeStrikeEstimationStudy
 from pyrpod.mission import MissionEnvironment
 
 class OneDimTransApproachChecks(unittest.TestCase):
@@ -53,7 +53,7 @@ class OneDimTransApproachChecks(unittest.TestCase):
         me = MissionEnvironment.MissionEnvironment(case_dir)
 
         # Instantiate RPOD object.
-        rpod = RPOD.RPOD(me)
+        rpod = PlumeStrikeEstimationStudy.RPOD(me)
         rpod.study_init(jfh, tv, lm)
 
         # Produce JFH using 1D physics

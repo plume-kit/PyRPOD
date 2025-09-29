@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from pyrpod.rpod import RPOD, JetFiringHistory
+from pyrpod.rpod import JetFiringHistory, PlumeStrikeEstimationStudy
 from pyrpod.mdao import SweepConfig
 import configparser
 
@@ -29,7 +29,7 @@ class TradeStudy():
         jfh = JetFiringHistory.JetFiringHistory(case_dir)
 
         # Instantiate RPOD object.
-        rpod = RPOD.RPOD(case_dir)
+        rpod = PlumeStrikeEstimationStudy.RPOD(case_dir)
         rpod.study_init(jfh, tv, lm)
         self.rpod = rpod
 
