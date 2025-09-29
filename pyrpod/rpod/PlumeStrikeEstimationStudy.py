@@ -26,6 +26,7 @@ from pyrpod.rpod.approach_maneuvers import (
     compute_1d_approach,
 )
 from pyrpod.rpod.io import ensure_results_dirs, write_jfh
+from pyrpod.rpod.PlumeStudyExport import PlumeStudyExport
 from pyrpod.plume.PlumeStrikeEstimationStudy import compute_plume_strikes
 
 logger = get_logger("pyrpod.rpod.PlumeStrikeEstimationStudy")
@@ -119,6 +120,8 @@ class PlumeStrikeEstimationStudy (MissionPlanner):
         self.jfh = JetFiringHistory
         self.target = Target
         self.vv = Vehicle
+        # visualization/export helper
+        self.viz = PlumeStudyExport(self.environment)
 
     def graph_init_config(self):
         """
@@ -255,7 +258,8 @@ class PlumeStrikeEstimationStudy (MissionPlanner):
                 index = '0' + str(firing)
             else:
                 index = str(i)
-            plt.savefig('img/frame' + str(index) + '.png')
+            # delegate figure saving to export helper
+            self.viz.save_figure(figure, os.path.join(self.environment.case_dir, 'img', 'frame' + str(index) + '.png'))
 
     def graph_clusters(self, firing, vv_orientation):
         """
@@ -442,13 +446,12 @@ class PlumeStrikeEstimationStudy (MissionPlanner):
             # print(self.environment.case_dir + self.environment.config['stl']['vv'])
 
             if trade_study == False:
-                path_to_stl = self.environment.case_dir + "results/jfh/firing-" + str(firing) + ".stl" 
+                path_to_stl = os.path.join(self.environment.case_dir, "results", "jfh", f"firing-{firing}.stl")
             elif trade_study == True:
-                path_to_stl = self.environment.case_dir + "results/" + self.get_case_key() + "/jfh/firing-" + str(firing) + ".stl" 
+                path_to_stl = os.path.join(self.environment.case_dir, "results", self.get_case_key(), "jfh", f"firing-{firing}.stl")
 
-            # path_to_stl = self.environment.case_dir + "results/jfh/firing-" + str(firing) + ".stl"
             # self.vv.convert_stl_to_vtk(path_to_vtk, mesh =VVmesh)
-            VVmesh.save(path_to_stl)
+            self.viz.export_firing(VVmesh, path_to_stl)
 
     def visualize_sweep(self, config_iter): 
         """
@@ -576,13 +579,13 @@ class PlumeStrikeEstimationStudy (MissionPlanner):
             # print(self.environment.case_dir + self.environment.config['stl']['vv'])
 
             if self.count > 0:
-                path_to_vtk = self.environment.case_dir + "results/strikes/firing-" + str(self.count) + "-" + str(firing)
-                path_to_stl = self.environment.case_dir + "results/jfh/firing-" + str(self.count) + "-" + str(firing) + ".stl"
+                path_to_vtk = os.path.join(self.environment.case_dir, "results", "strikes", f"firing-{self.count}-{firing}")
+                path_to_stl = os.path.join(self.environment.case_dir, "results", "jfh", f"firing-{self.count}-{firing}.stl")
             else:
-                path_to_vtk = self.environment.case_dir + "results/jfh/firing-" + str(firing)
-                path_to_stl = self.environment.case_dir + "results/jfh/firing-" + str(firing) + ".stl"
+                path_to_vtk = os.path.join(self.environment.case_dir, "results", "jfh", f"firing-{firing}")
+                path_to_stl = os.path.join(self.environment.case_dir, "results", "jfh", f"firing-{firing}.stl")
             # self.vv.convert_stl_to_vtk(path_to_vtk, mesh =VVmesh)
-            VVmesh.save(path_to_stl)
+            self.viz.export_firing(VVmesh, path_to_stl)
 
     # def update_window_queue(self, window_queue, cur_window, firing_time, window_size):
     #     """
