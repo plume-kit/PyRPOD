@@ -45,13 +45,13 @@ class LoadSTLModels(unittest.TestCase):
         me = MissionEnvironment.MissionEnvironment(case_dir)
 
         # Instantiate RPOD object.
-        rpod = PlumeStrikeEstimationStudy.RPOD(me)
+        plume_strike_study = PlumeStrikeEstimationStudy.PlumeStrikeEstimationStudy(me)
         # Initiate RPOD study.
-        rpod.study_init(jfh, tv, vv)
+        plume_strike_study.study_init(jfh, tv, vv)
         # Load STLs in Paraview
-        rpod.graph_jfh()
+        plume_strike_study.graph_jfh()
         # Run plume strike analysis.
-        rpod.jfh_plume_strikes()
+        plume_strike_study.jfh_plume_strikes()
 
 if __name__ == '__main__':
     unittest.main()

@@ -28,9 +28,9 @@ from pyrpod.rpod.approach_maneuvers import (
 from pyrpod.rpod.io import ensure_results_dirs, write_jfh
 from pyrpod.plume.PlumeStrikeEstimationStudy import compute_plume_strikes
 
-logger = get_logger("pyrpod.rpod.RPOD")
+logger = get_logger("pyrpod.rpod.PlumeStrikeEstimationStudy")
 
-class RPOD (MissionPlanner):
+class PlumeStrikeEstimationStudy (MissionPlanner):
     """
         Class responsible for analyzing RPOD performance of visiting vehicles.
 

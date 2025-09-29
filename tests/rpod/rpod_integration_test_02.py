@@ -53,8 +53,8 @@ class OneDimTransApproachChecks(unittest.TestCase):
         me = MissionEnvironment.MissionEnvironment(case_dir)
 
         # Instantiate RPOD object.
-        rpod = PlumeStrikeEstimationStudy.RPOD(me)
-        rpod.study_init(jfh, tv, lm)
+        plume_strike_study = PlumeStrikeEstimationStudy.PlumeStrikeEstimationStudy(me)
+        plume_strike_study.study_init(jfh, tv, lm)
 
         # Produce JFH using 1D physics
         # r_o = 40 # initial distance (m)
@@ -67,8 +67,8 @@ class OneDimTransApproachChecks(unittest.TestCase):
 
     # 2. Execute
         # Conduct RPOD analysis
-        rpod.graph_jfh()
-        strikes = rpod.jfh_plume_strikes()
+        plume_strike_study.graph_jfh()
+        strikes = plume_strike_study.jfh_plume_strikes()
 
         # logging.info(len(strikes['1']['cum_strikes']))  
 
