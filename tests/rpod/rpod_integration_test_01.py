@@ -15,7 +15,7 @@ logging.basicConfig(filename='rpod_integration_test_01.log', level=logging.INFO,
 import test_header
 import unittest, os, sys
 from pyrpod.vehicle import LogisticsModule, TargetVehicle
-from pyrpod.rpod import RPOD, JetFiringHistory
+from pyrpod.rpod import JetFiringHistory, PlumeStrikeEstimationStudy
 from pyrpod.mission import MissionEnvironment
 
 class BaseCaseChecks(unittest.TestCase):
@@ -42,16 +42,16 @@ class BaseCaseChecks(unittest.TestCase):
         me = MissionEnvironment.MissionEnvironment(case_dir)
 
         # Instantiate RPOD object.
-        rpod = RPOD.RPOD(me)
-        rpod.study_init(jfh, tv, lm)
+        plume_strike_study = PlumeStrikeEstimationStudy.PlumeStrikeEstimationStudy(me)
+        plume_strike_study.study_init(jfh, tv, lm)
 
         # Read in JFH.
         jfh.read_jfh()
 
     # 2. Execute
         # Conduct RPOD analysis
-        rpod.graph_jfh()
-        strikes = rpod.jfh_plume_strikes()
+        plume_strike_study.graph_jfh()
+        strikes = plume_strike_study.jfh_plume_strikes()
 
     # 3. Assert
         # Assert expected strike values for each firing in the JFH.

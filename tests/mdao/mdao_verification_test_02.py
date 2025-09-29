@@ -11,7 +11,7 @@
 
 import openmdao.api as om
 
-from pyrpod.rpod import JetFiringHistory, RPOD
+from pyrpod.rpod import JetFiringHistory, PlumeStrikeEstimationStudy
 from pyrpod.vehicle import TargetVehicle, LogisticsModule
 from pyrpod.mdao import SweepConfig
 from pyrpod.mission import MissionPlanner
@@ -55,7 +55,7 @@ class EvaluateImpingement(om.ExplicitComponent):
         self.lm.assign_thruster_groups()
 
         # Instantiate RPOD object.
-        self.rpod = RPOD.RPOD(self.case_dir)
+        self.rpod = PlumeStrikeEstimationStudy.RPOD(self.case_dir)
 
         self.mp = MissionPlanner.MissionPlanner(self.case_dir)
         self.mp.read_flight_plan()

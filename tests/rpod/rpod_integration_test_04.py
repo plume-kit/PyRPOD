@@ -14,7 +14,7 @@ import unittest, os, sys
 import pandas as pd
 
 from pyrpod.vehicle import LogisticsModule, TargetVehicle, VisitingVehicle
-from pyrpod.rpod import RPOD, JetFiringHistory
+from pyrpod.rpod import JetFiringHistory, PlumeStrikeEstimationStudy
 from pyrpod.mission import MissionEnvironment
 
 class HollowCubeChecks(unittest.TestCase):
@@ -42,13 +42,13 @@ class HollowCubeChecks(unittest.TestCase):
         me = MissionEnvironment.MissionEnvironment(case_dir)
 
         # Instantiate RPOD object.
-        rpod = RPOD.RPOD(me)
-        rpod.study_init(jfh, tv, vv)
+        plume_strike_study = PlumeStrikeEstimationStudy.PlumeStrikeEstimationStudy(me)
+        plume_strike_study.study_init(jfh, tv, vv)
 
     # 2. Execute
         # Run plume strike analysis
-        rpod.graph_jfh()
-        strikes = rpod.jfh_plume_strikes()
+        plume_strike_study.graph_jfh()
+        strikes = plume_strike_study.jfh_plume_strikes()
 
     # 3. Assert
         # Read in expected strikes from text file.

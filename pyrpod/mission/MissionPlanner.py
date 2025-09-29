@@ -20,22 +20,6 @@ class MissionPlanner:
         self.post_processor = PostProcessor()
         self.dynamics = SixDOFDynamics()
         self.propellant = FuelManager(self.environment)
-
-
-    # def __init__(self, case_dir):
-    #     # Read case configuration data.
-    #     self.case_dir = case_dir
-    #     config = configparser.ConfigParser()
-    #     config.read(self.case_dir + "config.ini")
-    #     self.config = config
-
-    #     self.state = StateVectors()
-    #     # self.thruster_groups = ThrusterGrouping(config.get('rcs_config', {}))
-    #     # self.dynamics = SixDOFDynamics(self.thruster_groups)
-    #     # self.propellant = FuelManager(config.get('isp', 300), config.get('mass', 1000))
-    #     self.flight_eval = FlightEvaluator(self.case_dir, self.config)
-    #     # self.post_processor = PostProcessor()
-    #     self.orbital_transfer = OrbitalTransferEngine()
     
     def set_lm(self, LogisticsModule):
         """

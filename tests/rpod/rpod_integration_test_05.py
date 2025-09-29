@@ -12,7 +12,7 @@ import test_header
 import unittest, os, sys
 
 from pyrpod.vehicle import LogisticsModule, TargetVehicle, VisitingVehicle
-from pyrpod.rpod import RPOD, JetFiringHistory
+from pyrpod.rpod import JetFiringHistory, PlumeStrikeEstimationStudy
 from pyrpod.mission import MissionEnvironment
 
 
@@ -36,11 +36,11 @@ class LoadJFHChecks(unittest.TestCase):
 
         me = MissionEnvironment.MissionEnvironment(case_dir)
 
-        rpod = RPOD.RPOD(me)
-        rpod.study_init(jfh, tv, vv)
+        plume_strike_study = PlumeStrikeEstimationStudy.PlumeStrikeEstimationStudy(me)
+        plume_strike_study.study_init(jfh, tv, vv)
 
-        rpod.graph_jfh()
-        rpod.jfh_plume_strikes()
+        plume_strike_study.graph_jfh()
+        plume_strike_study.jfh_plume_strikes()
 
 if __name__ == '__main__':
     unittest.main()

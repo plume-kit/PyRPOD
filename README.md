@@ -21,7 +21,7 @@ PyRPOD utilizies scientific libraries such as NumPy, SciPy, Matplotlib, and SymP
 ## Getting Started
 1. Clone the repository:
    ```bash
-   git clone https://github.com/moon-mail/PyRPOD
+   git clone https://github.com/plume-kit/PyRPOD
    ```
 2. Install dependencies:
    ```bash
