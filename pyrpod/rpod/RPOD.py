@@ -26,7 +26,7 @@ from pyrpod.rpod.approach_maneuvers import (
     compute_1d_approach,
 )
 from pyrpod.rpod.io import ensure_results_dirs, write_jfh
-from pyrpod.rpod.PlumeStrikeEstimationStudy import compute_plume_strikes
+from pyrpod.plume.PlumeStrikeEstimationStudy import compute_plume_strikes
 
 logger = get_logger("pyrpod.rpod.RPOD")
 
