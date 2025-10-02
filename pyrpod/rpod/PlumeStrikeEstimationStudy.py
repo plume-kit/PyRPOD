@@ -26,7 +26,14 @@ from pyrpod.rpod.approach_maneuvers import (
     compute_1d_approach,
 )
 from pyrpod.rpod.io import ensure_results_dirs, write_jfh
-from pyrpod.rpod.PlumeStudyExport import PlumeStudyExport
+from pyrpod.plume.PlumeStudyExport import PlumeStudyExport
+from pyrpod.plume.PlumeMeshUtils import (
+    transform_plume_for_thruster,
+    compose_meshes,
+)
+
+from pyrpod.vehicle.VisitingVehicle import build_thruster_link
+
 from pyrpod.plume.PlumeStrikeCalculator import compute_plume_strikes
 
 logger = get_logger("pyrpod.rpod.PlumeStrikeEstimationStudy")
@@ -182,12 +189,8 @@ class PlumeStrikeEstimationStudy (MissionPlanner):
             Does the method need to return a status message? or pass similar data?
         """
 
-        # Link JFH numbering of thrusters to thruster names.  
-        link = {}
-        i = 1
-        for thruster in self.vv.thruster_data:
-            link[str(i)] = self.vv.thruster_data[thruster]['name']
-            i = i + 1
+        # Link JFH numbering of thrusters to thruster names.
+        link = build_thruster_link(self.vv)
 
         # Loop through each firing in the JFH.
         for firing in range(len(self.jfh.JFH)):
@@ -225,11 +228,13 @@ class PlumeStrikeEstimationStudy (MissionPlanner):
                     scale_factor=0.05
                 )
 
-                # Transform plume according to thruster and VV configuration.
-                plumeMesh = transform_mesh(
+                # Transform plume according to thruster and VV configuration using helper
+                plumeMesh = transform_plume_for_thruster(
                     plumeMesh,
-                    rotation_matrix=np.array(self.vv.thruster_data[thruster_id]['dcm']).T,
-                    translation_vector=self.vv.thruster_data[thruster_id]['exit'][0]
+                    thruster_id,
+                    self.vv,
+                    np.array(self.vv.thruster_data[thruster_id]['dcm']).T,
+                    self.vv.thruster_data[thruster_id]['exit'][0],
                 )
 
                 logger.debug("Thruster %s DCM: %s", thruster_id, self.vv.thruster_data[thruster_id]['dcm'])
@@ -257,7 +262,8 @@ class PlumeStrikeEstimationStudy (MissionPlanner):
             elif firing < 100:
                 index = '0' + str(firing)
             else:
-                index = str(i)
+                # fallback to firing number if original index counter unavailable
+                index = str(firing)
             # delegate figure saving to export helper
             self.viz.save_figure(figure, os.path.join(self.environment.case_dir, 'img', 'frame' + str(index) + '.png'))
 
@@ -329,12 +335,8 @@ class PlumeStrikeEstimationStudy (MissionPlanner):
             Method doesn't currently return anything. Simply produces data as needed.
             Does the method need to return a status message? or pass similar data?
         """
-        # Link JFH numbering of thrusters to thruster names.  
-        link = {}
-        i = 1
-        for thruster in self.vv.thruster_data:
-            link[str(i)] = self.vv.thruster_data[thruster]['name']
-            i = i + 1
+        # Link JFH numbering of thrusters to thruster names.
+        link = build_thruster_link(self.vv)
         
         # Create results directory if it doesn't already exist.
         results_dir = self.environment.case_dir + 'results'
@@ -397,49 +399,32 @@ class PlumeStrikeEstimationStudy (MissionPlanner):
 
                 # Transform plume
                 
-                # First, according to DCM of current thruster id in TCF
-                thruster_orientation = np.array(
-                    self.vv.thruster_data[thruster_id]['dcm']
+                # Transform plumeMesh for the thruster and the current JFH step
+                plumeMesh = transform_plume_for_thruster(
+                    plumeMesh,
+                    thruster_id,
+                    self.vv,
+                    vv_orientation,
+                    self.jfh.JFH[firing]['xyz'],
                 )
-                plumeMesh.rotate_using_matrix(thruster_orientation.transpose())
 
-                # Second, according to DCM of VV in JFH
-                plumeMesh.rotate_using_matrix(vv_orientation.transpose())
-
-                # Third, according to position vector of the VV in JFH
-                plumeMesh.translate(self.jfh.JFH[firing]['xyz'])
-                
-                # Fourth, according to position of current cluster in CCF
-                if self.vv.use_clusters == True:
-                    # thruster_id[0] = "P" and thruster_id[1] = "#", adding these gives the cluster identifier
-                    plumeMesh.translate(self.vv.cluster_data[thruster_id[0] + thruster_id[1]]['exit'][0])
-
-                # Fifth, according to exit vector of current thruster id in TCD
-                plumeMesh.translate(self.vv.thruster_data[thruster_id]['exit'][0])
-
-                # Takeaway: Do rotations before translating away from the rotation axes!   
-
-
-                if active_cones == None:
+                # accumulate active cones efficiently via helper
+                if active_cones is None:
                     active_cones = plumeMesh
                 else:
-                    active_cones = mesh.Mesh(
-                        np.concatenate([active_cones.data, plumeMesh.data])
-                    )
+                    active_cones = compose_meshes([active_cones, plumeMesh])
 
                 # print('DCM: ', self.vv.thruster_data[thruster_id]['dcm'])
                 # print('DCM: ', thruster_orientation[0], thruster_orientation[1], thruster_orientation[2])
 
-            if self.vv.use_clusters != True:
-                if not active_cones == None:
-                    VVmesh = mesh.Mesh(
-                        np.concatenate([VVmesh.data, active_cones.data])
-                    )
-            if self.vv.use_clusters == True:
-                if not active_cones == None:
-                    VVmesh = mesh.Mesh(
-                        np.concatenate([VVmesh.data, active_cones.data, active_clusters.data])
-                    )
+            # combine VVmesh with active cones and clusters if present
+            extras = []
+            if active_cones is not None:
+                extras.append(active_cones)
+            if self.vv.use_clusters and 'active_clusters' in locals() and active_clusters is not None:
+                extras.append(active_clusters)
+            if extras:
+                VVmesh = compose_meshes([VVmesh] + extras)
             
             # print(self.vv.mesh)
 
@@ -473,12 +458,8 @@ class PlumeStrikeEstimationStudy (MissionPlanner):
             Method doesn't currently return anything. Simply produces data as needed.
             Does the method need to return a status message? or pass similar data?
         """
-        # Link JFH numbering of thrusters to thruster names.  
-        link = {}
-        i = 1
-        for thruster in self.vv.thruster_data:
-            link[str(i)] = self.vv.thruster_data[thruster]['name']
-            i = i + 1
+        # Link JFH numbering of thrusters to thruster names.
+        link = build_thruster_link(self.vv)
         # print('link is', link)
 
         # Create results directory if it doesn't already exist.
@@ -525,40 +506,20 @@ class PlumeStrikeEstimationStudy (MissionPlanner):
                 # Could naming/code be more clear?
                 # print('thruster num', thruster, 'thruster id', link[str(thruster)][0])
 
-                # Load plume STL in initial configuration. 
+                # Load plume STL and apply standard transform for this thruster
                 plumeMesh = mesh.Mesh.from_file(self.environment.case_dir + 'stl/' + self.environment.config['vv']['stl_thruster'])
-
-                # Transform plume
-                
-                # First, according to DCM of current thruster id in TCF
-                thruster_orientation = np.array(
-                    self.vv.thruster_data[thruster_id]['dcm']
+                plumeMesh = transform_plume_for_thruster(
+                    plumeMesh,
+                    thruster_id,
+                    self.vv,
+                    vv_orientation,
+                    self.jfh.JFH[firing]['xyz'],
                 )
-                plumeMesh.rotate_using_matrix(thruster_orientation.transpose())
 
-                # Second, according to DCM of VV in JFH
-                plumeMesh.rotate_using_matrix(vv_orientation.transpose())
-
-                # Third, according to position vector of the VV in JFH
-                plumeMesh.translate(self.jfh.JFH[firing]['xyz'])
-                
-                # Fourth, according to position of current cluster in CCF
-                if self.vv.use_clusters == True:
-                    # thruster_id[0] = "P" and thruster_id[1] = "#", adding these gives the cluster identifier
-                    plumeMesh.translate(self.vv.cluster_data[thruster_id[0] + thruster_id[1]]['exit'][0])
-
-                # Fifth, according to exit vector of current thruster id in TCD
-                plumeMesh.translate(self.vv.thruster_data[thruster_id]['exit'][0])
-
-                # Takeaway: Do rotations before translating away from the rotation axes!   
-
-
-                if active_cones == None:
+                if active_cones is None:
                     active_cones = plumeMesh
                 else:
-                    active_cones = mesh.Mesh(
-                        np.concatenate([active_cones.data, plumeMesh.data])
-                    )
+                    active_cones = compose_meshes([active_cones, plumeMesh])
 
                 # print('DCM: ', self.vv.thruster_data[thruster_id]['dcm'])
                 # print('DCM: ', thruster_orientation[0], thruster_orientation[1], thruster_orientation[2])
