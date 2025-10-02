@@ -26,7 +26,7 @@ from pyrpod.rpod.approach_maneuvers import (
     compute_1d_approach,
 )
 from pyrpod.rpod.io import ensure_results_dirs, write_jfh
-from pyrpod.rpod.PlumeStudyExport import PlumeStudyExport
+from pyrpod.plume.PlumeStudyExport import PlumeStudyExport
 from pyrpod.plume.PlumeMeshUtils import (
     transform_plume_for_thruster,
     compose_meshes,
