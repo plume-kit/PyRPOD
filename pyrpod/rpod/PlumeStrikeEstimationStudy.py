@@ -27,11 +27,13 @@ from pyrpod.rpod.approach_maneuvers import (
 )
 from pyrpod.rpod.io import ensure_results_dirs, write_jfh
 from pyrpod.rpod.PlumeStudyExport import PlumeStudyExport
-from pyrpod.rpod.PlumeMeshUtils import (
-    build_thruster_link,
+from pyrpod.plume.PlumeMeshUtils import (
     transform_plume_for_thruster,
     compose_meshes,
 )
+
+from pyrpod.vehicle.VisitingVehicle import build_thruster_link
+
 from pyrpod.plume.PlumeStrikeCalculator import compute_plume_strikes
 
 logger = get_logger("pyrpod.rpod.PlumeStrikeEstimationStudy")

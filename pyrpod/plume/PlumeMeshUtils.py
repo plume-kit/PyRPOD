@@ -9,19 +9,6 @@ import numpy as np
 from stl import mesh
 
 
-def build_thruster_link(vv) -> Dict[str, object]:
-    """Create mapping from indexed JFH thruster numbering to thruster names/data.
-
-    Returns the same shape as existing code: map of str(i) -> vv.thruster_data[thruster]['name']
-    """
-    link = {}
-    i = 1
-    for thruster in vv.thruster_data:
-        link[str(i)] = vv.thruster_data[thruster]['name']
-        i += 1
-    return link
-
-
 def transform_plume_for_thruster(plume_mesh: mesh.Mesh, thruster_id: str, vv, vv_orientation: np.ndarray, vv_pos) -> mesh.Mesh:
     """Apply the standard sequence of rotations and translations to a plume mesh.
 
