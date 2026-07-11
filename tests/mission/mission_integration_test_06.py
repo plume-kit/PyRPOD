@@ -22,7 +22,6 @@
 # 4. Add data points for relevant thruster technologies.
 # 5. Given a delta V and W requirement, comparison of thrust. isp, and mass flow rate. (M3) (Fuel Usage)
 
-import test_header
 import unittest, os, sys
 from pyrpod.vehicle import LogisticsModule
 from pyrpod.mission import MissionPlanner, MissionEnvironment

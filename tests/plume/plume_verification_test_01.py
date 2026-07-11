@@ -9,7 +9,6 @@
 # A test case to plot simple radial expansion profiles.
 # TODO: Re-factor code to save data in a relevant object. Also add files to save to.
 
-import test_header
 import unittest, os, sys
 from pyrpod.plume import IsentropicExpansion
 

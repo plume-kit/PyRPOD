@@ -12,7 +12,6 @@ import logging
 logging.basicConfig(filename='rpod_integration_test_03.log', level=logging.INFO, format='%(message)s')
 
 
-import test_header
 import unittest, os, sys
 
 from pyrpod.vehicle import LogisticsModule, TargetVehicle

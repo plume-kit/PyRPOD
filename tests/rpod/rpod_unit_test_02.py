@@ -9,7 +9,6 @@
 # Test case for reading in JFH data.
 
 
-import test_header
 import unittest, os, sys
 from pyrpod.rpod import JetFiringHistory
 

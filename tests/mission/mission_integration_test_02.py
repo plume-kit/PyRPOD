@@ -8,7 +8,6 @@
 # ========================
 # A brief test case to calculate the 6DOF performance of thruster working groups
 
-import test_header
 import unittest, os, sys
 from pyrpod.vehicle import LogisticsModule
 

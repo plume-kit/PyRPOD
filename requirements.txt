@@ -13,3 +13,4 @@ black
 ruff
 flake8
 isort
+pytest

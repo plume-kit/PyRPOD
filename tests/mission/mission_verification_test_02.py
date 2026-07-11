@@ -10,7 +10,6 @@
 # Write test case description.
 
 
-import test_header
 import unittest
 from pyrpod.mission import MissionPlanner, MissionEnvironment
 

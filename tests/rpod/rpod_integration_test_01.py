@@ -12,7 +12,6 @@ logging.basicConfig(filename='rpod_integration_test_01.log', level=logging.INFO,
 # is also established as the base case for RPOD plume impingement analysis.
 # The test uses JFH data to assert expected strike counts across 20 distinct firings.
 
-import test_header
 import unittest, os, sys
 from pyrpod.vehicle import LogisticsModule, TargetVehicle
 from pyrpod.rpod import JetFiringHistory, PlumeStrikeEstimationStudy

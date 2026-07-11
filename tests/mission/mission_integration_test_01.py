@@ -8,7 +8,6 @@
 # ========================
 # A brief test case to calculate the 6DOF performance of each individual thruster in the LM
 
-import test_header
 import unittest, os, sys
 import numpy as np
 

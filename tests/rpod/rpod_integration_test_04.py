@@ -9,7 +9,6 @@ logging.basicConfig(filename='rpod_integration_test_04.log', level=logging.INFO,
 # ========================
 # Test case for producing hollow cube data.
 
-import test_header
 import unittest, os, sys
 import pandas as pd
 

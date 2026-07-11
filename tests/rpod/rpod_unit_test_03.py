@@ -10,7 +10,6 @@
 # in pyrpod.util.io.file_print without making assertions yet. These files
 # will serve as fixtures for future tests to lock current behavior.
 
-import test_header  # adds project root to sys.path
 import unittest, os
 import numpy as np
 

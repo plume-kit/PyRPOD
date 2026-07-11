@@ -8,7 +8,6 @@
 # ========================
 # Test case for converting STL data to VTK data.
 # This is accomplished by checking for the proper data format of VTK files.
-import test_header
 import unittest, os
 import numpy as np
 import meshio

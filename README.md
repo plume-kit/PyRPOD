@@ -28,15 +28,21 @@ PyRPOD utilizies scientific libraries such as NumPy, SciPy, Matplotlib, and SymP
    pip install -r requirements.txt
    ```
 
-3. Run  all test cases.
+3. Run all test cases.
    ```bash
-   cd tests/
-   python3 test_all.py
+   python -m pytest
    ```
+   It is recomended to use `python -m pytest` rather than the bare `pytest` command. This guarantees the
+   `python` you're currently using (venv, conda env, etc.) runs the tests, avoiding
+   `ModuleNotFoundError`s that show up if a system-wide `pytest` (e.g. installed via
+   `apt`) ends up on your `PATH` instead of the one in the environment where you ran
+   `pip install -r requirements.txt`.
 
-3. Run individual test cases (Not ideal, I know).
+4. Run a subset of test cases using markers (auto-tagged by category and subsystem).
    ```bash
-   cd tests/
-   mv <test_module>/test_case.py .
-   python3 test_case.py
+   python -m pytest -m unit             # unit tests only
+   python -m pytest -m integration      # integration tests only
+   python -m pytest -m verification     # verification tests only
+   python -m pytest -m rpod             # a specific subsystem (mdao, mission, plume, rpod)
+   python -m pytest tests/rpod          # or just point pytest at a directory/file directly
    ```

@@ -8,7 +8,6 @@
 # ========================
 # Test case to contour the propellant usage across the various Δv in a given flight plan.
 
-import test_header
 import unittest, os, sys
 from pyrpod.vehicle import LogisticsModule
 from pyrpod.mission import MissionPlanner, MissionEnvironment

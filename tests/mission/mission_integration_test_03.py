@@ -8,7 +8,6 @@
 # ========================
 # A brief test case to calculate RCS perfomance for a given flight plan approximating Δv requirements.
 
-import test_header
 import unittest, os, sys
 from pyrpod.vehicle import LogisticsModule
 from pyrpod.mission import MissionPlanner, MissionEnvironment

@@ -8,7 +8,6 @@
 # ========================
 # Test case to analyze notional (1D transation + rotation) approach. (NEEDS TLC)
 
-import test_header
 import unittest, os, sys
 from pyrpod.vehicle import LogisticsModule
 from pyrpod.mission import MissionPlanner, MissionEnvironment
