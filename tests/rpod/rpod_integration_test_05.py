@@ -8,7 +8,6 @@
 # ========================
 # Test case for testing plume gas kinetic models in jfh firings **with multiple thrusters per firing**.
 
-import test_header
 import unittest, os, sys
 
 from pyrpod.vehicle import LogisticsModule, TargetVehicle, VisitingVehicle

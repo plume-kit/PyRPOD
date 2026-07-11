@@ -9,7 +9,6 @@
 # ========================
 # 
 
-import test_header
 import unittest
 
 from pyrpod.vehicle import TargetVehicle, LogisticsModule

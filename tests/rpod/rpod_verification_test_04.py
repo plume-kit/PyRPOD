@@ -8,7 +8,6 @@
 # ========================
 # Visualizes STLs after decoupling the TCD and verifies that the plume strikes line up with the thrusters.
 
-import test_header
 import unittest, os, sys
 
 from pyrpod.vehicle import LogisticsModule, TargetVehicle, VisitingVehicle

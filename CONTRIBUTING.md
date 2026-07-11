@@ -44,11 +44,12 @@ When your contribution is ready, submit a pull request. Include a clear summary 
 
 ## Testing and Continuous Integration (CI)
 
-PyRPOD uses automated testing to ensure stability and prevent regressions. To facilitate this:
+PyRPOD uses [pytest](https://docs.pytest.org/) to ensure stability and prevent regressions. To facilitate this:
 
-1. Write unit tests for your contributions in the `tests` directory.
-2. Ensure all tests pass before submitting a pull request.
-3. If possible, run CI tests locally before pushing your changes. Follow the instructions in the project’s CI setup documentation.
+1. Write tests for your contributions in the `tests` directory, following the existing `<group>_<category>_test_NN.py` naming convention (e.g. `rpod_unit_test_04.py`).
+2. Run the full suite locally with `pytest` from the repository root before submitting a pull request.
+3. Tests are automatically tagged with `unit`, `integration`, `verification`, and subsystem (`mdao`, `mission`, `plume`, `rpod`) markers based on their filename, so you can run a subset with e.g. `pytest -m unit` or `pytest -m rpod`.
+4. CI runs the same `pytest` suite automatically on every push and pull request via [GitHub Actions](.github/workflows/tests.yml).
 
 ## Code Formatting
 

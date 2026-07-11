@@ -8,7 +8,6 @@
 # ========================
 # Test case to contour the burn plot graph across various thrust and ISP values. (NEEDS TLC)
 
-import test_header
 import unittest, os, sys
 from pyrpod.vehicle import LogisticsModule
 from pyrpod.mission import MissionPlanner, MissionEnvironment

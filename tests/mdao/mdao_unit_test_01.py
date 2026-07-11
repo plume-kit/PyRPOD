@@ -9,7 +9,6 @@
 # ========================
 # Write test case description.
 
-import test_header
 import unittest
 
 class MDAOTest(unittest.TestCase):

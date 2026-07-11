@@ -24,3 +24,18 @@ show_error_codes = true
 "tests/**" = ["D", "S101"]
 "**/__pycache__/**" = ["ALL"]
 "venv-pyrpod/**" = ["ALL"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Legacy test files are named "<group>_<category>_test_NN.py" rather than pytest's default patterns.
+python_files = ["test_*.py", "*_test_*.py"]
+pythonpath = ["."]
+markers = [
+    "unit: unit-level test cases",
+    "integration: integration test cases",
+    "verification: verification/validation test cases",
+    "mdao: mdao subsystem tests",
+    "mission: mission subsystem tests",
+    "plume: plume subsystem tests",
+    "rpod: rpod subsystem tests",
+]

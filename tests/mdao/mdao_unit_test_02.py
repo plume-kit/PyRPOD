@@ -16,7 +16,6 @@
 
 # TODO: Re-factor code to save data in a relevant object. Also add files to save to.
 
-import test_header
 import unittest, os, sys
 import numpy as np
 

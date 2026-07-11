@@ -12,7 +12,6 @@ logging.basicConfig(filename='rpod_integration_test_02.log', level=logging.INFO,
 # trajectory reperesents a VV firing its adverse thrusters to slow down in preperation for docking.
 # The test uses JFH data to assert expected strike counts across 15 distinct firings.
 
-import test_header
 import unittest, os, sys
 
 from pyrpod.vehicle import LogisticsModule, TargetVehicle

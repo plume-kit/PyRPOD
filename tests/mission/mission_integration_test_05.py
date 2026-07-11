@@ -20,7 +20,6 @@
 # 3. Use time and distance limits to create flight envelope data.
 # 4. Add data points for relevant thruster technologies.
 
-import test_header
 import unittest, os, sys
 from pyrpod.vehicle import LogisticsModule
 from pyrpod.mission import MissionPlanner, MissionEnvironment

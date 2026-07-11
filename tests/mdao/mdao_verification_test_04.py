@@ -10,7 +10,6 @@
 # Initial variable sweep study used to explore the maximum overshoot velocity an LM can handle
 # if the thruster configuration and decelaration starting distance are held constant.
 
-import test_header
 import unittest
 
 from pyrpod.vehicle import TargetVehicle, LogisticsModule
