@@ -11,7 +11,23 @@ from pyrpod.vehicle.Vehicle import Vehicle
 from pyrpod.mdao import SweepConfig
 from pyrpod.logging_utils import get_logger
 
+from typing import Dict, Optional, Sequence
+
+
 logger = get_logger("pyrpod.vehicle.VisitingVehicle")
+
+def build_thruster_link(vv) -> Dict[str, object]:
+    """Create mapping from indexed JFH thruster numbering to thruster names/data.
+
+    Returns the same shape as existing code: map of str(i) -> vv.thruster_data[thruster]['name']
+    """
+    link = {}
+    i = 1
+    for thruster in vv.thruster_data:
+        link[str(i)] = vv.thruster_data[thruster]['name']
+        i += 1
+    return link
+
 
 # Adapted from
 # https://stackoverflow.com/questions/54616049/converting-a-rotation-matrix-to-euler-angles-and-back-special-case
