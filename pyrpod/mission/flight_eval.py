@@ -3,6 +3,7 @@ import numpy as np
 
 from pyrpod.mission.SubModule import SubModule
 from pyrpod.mission.six_dof_dynamics import SixDOFDynamics
+from pyrpod.util.io.fs import resolve_asset_path
 
 class FlightEvaluator(SubModule, SixDOFDynamics):
         # self.maneuvers = []
@@ -36,7 +37,9 @@ class FlightEvaluator(SubModule, SixDOFDynamics):
         self.vv = vv
 
         try:
-            path_to_file = self.case_dir + 'jfh/' + self.config['jfh']['flight_plan']
+            path_to_file = resolve_asset_path(
+                self.case_dir, 'jfh', self.config['jfh']['flight_plan'], shared_subdir='flight_plan'
+            )
         except KeyError:
             # print("WARNING: flight plan not set")
             self.flight_plan = None

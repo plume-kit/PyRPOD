@@ -10,6 +10,7 @@ import os
 from pyrpod.vehicle.Vehicle import Vehicle
 from pyrpod.mdao import SweepConfig
 from pyrpod.logging_utils import get_logger
+from pyrpod.util.io.fs import resolve_asset_path
 
 logger = get_logger("pyrpod.vehicle.VisitingVehicle")
 
@@ -209,7 +210,7 @@ class VisitingVehicle(Vehicle):
             Method doesn't currently return anything. Simply sets class members as needed.
             Does the method need to return a status message? or pass similar data?
         """
-        path_to_stl = self.case_dir + 'stl/' + self.config['vv']['stl_lm']
+        path_to_stl = resolve_asset_path(self.case_dir, 'stl', self.config['vv']['stl_lm'])
         self.mesh = mesh.Mesh.from_file(path_to_stl)
         self.path_to_stl = path_to_stl
         return
@@ -282,10 +283,8 @@ class VisitingVehicle(Vehicle):
             Does the method need to return a status message? or pass similar data?
         """
         if thruster_data is None:
-            path_to_tcf = self.case_dir + 'tcd/' + self.config['tcd']['tcf']
-        
             try:
-                path_to_tcf = self.case_dir + 'tcd/' + self.config['tcd']['tcf']
+                path_to_tcf = resolve_asset_path(self.case_dir, 'tcd', self.config['tcd']['tcf'])
             except KeyError:
                 # print("WARNING: Thruster Configuration File not set")
                 return
@@ -345,7 +344,7 @@ class VisitingVehicle(Vehicle):
             Method doesn't currently return anything. Simply sets class members as needed.
         """
 
-        path_to_ccf = self.case_dir + 'tcd/' + self.config['tcd']['ccf']
+        path_to_ccf = resolve_asset_path(self.case_dir, 'tcd', self.config['tcd']['ccf'])
 
         # Simple program, reading text from a file.
         with open(path_to_ccf, 'r') as f:
@@ -384,7 +383,7 @@ class VisitingVehicle(Vehicle):
 
         # Read in path for thruster metric data.
         try:
-            path_to_thruster_metrics = self.case_dir + 'tcd/' + self.config['tcd']['tdf']
+            path_to_thruster_metrics = resolve_asset_path(self.case_dir, 'tcd', self.config['tcd']['tdf'])
         except KeyError:
             # print("WARNING: Thruster Metrics File Not Set")
             self.thruster_metrics = None

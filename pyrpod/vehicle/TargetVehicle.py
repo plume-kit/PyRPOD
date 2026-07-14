@@ -1,5 +1,6 @@
 from stl import mesh
 from pyrpod.vehicle.Vehicle import Vehicle
+from pyrpod.util.io.fs import resolve_asset_path
 
 class TargetVehicle(Vehicle):
     """
@@ -41,7 +42,7 @@ class TargetVehicle(Vehicle):
             Method doesn't currently return anything. Simply sets class members as needed.
             Does the method need to return a status message? or pass similar data?
         """
-        path_to_stl = self.case_dir + 'stl/' + self.config['tv']['stl']
+        path_to_stl = resolve_asset_path(self.case_dir, 'stl', self.config['tv']['stl'])
         meshes = mesh.Mesh.from_multi_file(path_to_stl)
         self.mesh = next(meshes)
         #self.mesh = next(meshes)

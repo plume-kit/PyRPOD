@@ -11,7 +11,7 @@ from pyrpod.mission.MissionPlanner import MissionPlanner
 from pyrpod.plume.RarefiedPlumeGasKinetics import SimplifiedGasKinetics
 
 from pyrpod.util.io.file_print import print_1d_JFH
-from pyrpod.util.io.fs import ensure_dir
+from pyrpod.util.io.fs import ensure_dir, resolve_asset_path
 from pyrpod.util.stl.stl import load_stl, transform_mesh
 
 from tqdm import tqdm
@@ -288,7 +288,7 @@ class PlumeStrikeEstimationStudy (MissionPlanner):
         for cluster in clusters_list:
 
             # Load plume STL in initial configuration. 
-            clusterMesh = mesh.Mesh.from_file(self.environment.case_dir + 'stl/' + self.environment.config['vv']['stl_cluster'])
+            clusterMesh = mesh.Mesh.from_file(resolve_asset_path(self.environment.case_dir, 'stl', self.environment.config['vv']['stl_cluster']))
 
             # Transform cluster
 
@@ -371,7 +371,7 @@ class PlumeStrikeEstimationStudy (MissionPlanner):
             # print("thrusters", thrusters)
              
             # Load, transform, and, graph STLs of visiting vehicle.  
-            VVmesh = mesh.Mesh.from_file(self.environment.case_dir + 'stl/' + self.environment.config['vv']['stl_lm'])
+            VVmesh = mesh.Mesh.from_file(resolve_asset_path(self.environment.case_dir, 'stl', self.environment.config['vv']['stl_lm']))
             vv_orientation = np.array(self.jfh.JFH[firing]['dcm'])
             # print(vv_orientation.transpose())
             VVmesh.rotate_using_matrix(vv_orientation.transpose())
@@ -393,7 +393,7 @@ class PlumeStrikeEstimationStudy (MissionPlanner):
                 thruster_id = link[str(thruster)][0]
 
                 # Load plume STL in initial configuration. 
-                plumeMesh = mesh.Mesh.from_file(self.environment.case_dir + 'stl/' + self.environment.config['vv']['stl_thruster'])
+                plumeMesh = mesh.Mesh.from_file(resolve_asset_path(self.environment.case_dir, 'stl', self.environment.config['vv']['stl_thruster']))
 
                 # Transform plume
                 
@@ -504,7 +504,7 @@ class PlumeStrikeEstimationStudy (MissionPlanner):
             # print("thrusters is", thrusters)
              
             # Load, transform, and, graph STLs of visiting vehicle.  
-            VVmesh = mesh.Mesh.from_file(self.environment.case_dir + 'stl/' + self.environment.config['vv']['stl_lm'])
+            VVmesh = mesh.Mesh.from_file(resolve_asset_path(self.environment.case_dir, 'stl', self.environment.config['vv']['stl_lm']))
             vv_orientation = np.array(self.jfh.JFH[firing]['dcm'])
             # print(vv_orientation.transpose())
             VVmesh.rotate_using_matrix(vv_orientation.transpose())
@@ -526,7 +526,7 @@ class PlumeStrikeEstimationStudy (MissionPlanner):
                 # print('thruster num', thruster, 'thruster id', link[str(thruster)][0])
 
                 # Load plume STL in initial configuration. 
-                plumeMesh = mesh.Mesh.from_file(self.environment.case_dir + 'stl/' + self.environment.config['vv']['stl_thruster'])
+                plumeMesh = mesh.Mesh.from_file(resolve_asset_path(self.environment.case_dir, 'stl', self.environment.config['vv']['stl_thruster']))
 
                 # Transform plume
                 

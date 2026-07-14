@@ -23,7 +23,7 @@ class ThrusterGroupingChecks(unittest.TestCase):
         # lm = LogisticsModule.LogisticsModule(m, h, r)
 
         # # Load in thruster configuration data from text file
-        # lm.add_thruster_config('../data/tcd/TCD2.txt')
+        # lm.add_thruster_config('../data/tcd/tcf_flight_envelopes.txt')
 
         # # Draco/Hypergolic thrusters
         # lm.add_thruster_performance(400, 300)
