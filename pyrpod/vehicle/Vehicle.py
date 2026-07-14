@@ -5,6 +5,7 @@ import configparser
 
 from pyevtk.vtk import VtkTriangle, VtkQuad
 from pyrpod.util.stl.stl import convert_stl_to_vtk
+from pyrpod.util.io.fs import resolve_asset_path
 
 class Vehicle:
     """
@@ -45,7 +46,7 @@ class Vehicle:
             Method doesn't currently return anything. Simply sets class members as needed.
             Does the method need to return a status message? or pass similar data?
         """
-        path_to_stl = self.case_dir + 'stl/' + self.config['vv']['stl_lm']
+        path_to_stl = resolve_asset_path(self.case_dir, 'stl', self.config['vv']['stl_lm'])
 
         self.mesh = mesh.Mesh.from_file(path_to_stl)
         self.path_to_stl = path_to_stl

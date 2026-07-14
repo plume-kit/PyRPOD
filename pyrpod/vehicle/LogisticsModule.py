@@ -6,6 +6,7 @@ from mpl_toolkits import mplot3d
 import os
 import configparser
 from pyrpod.logging_utils import get_logger
+from pyrpod.util.io.fs import resolve_asset_path
 
 logger = get_logger("pyrpod.vehicle.LogisticsModule")
 
@@ -255,7 +256,7 @@ class LogisticsModule(VisitingVehicle):
         # Read in grouping configuration file.
         config = configparser.ConfigParser()
         try:
-            config.read(self.case_dir + 'tcd/' + self.config['tcd']['tgf'])
+            config.read(resolve_asset_path(self.case_dir, 'tcd', self.config['tcd']['tgf']))
         except KeyError:
             # print("WARNING: Thruster Grouping File Not Set")
             self.rcs_groups = None

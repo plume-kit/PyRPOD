@@ -2,6 +2,7 @@ from pyrpod.mission.SubModule import SubModule
 import numpy as np
 import pandas as pd
 from pyrpod.logging_utils import get_logger
+from pyrpod.util.io.fs import resolve_asset_path
 
 logger = get_logger(__name__)
 
@@ -278,7 +279,10 @@ class FuelManager(SubModule):
 
         # Saving the flight plan into a Pandas dataframe
         try:
-            dataframe = pd.read_csv(self.case_dir + 'jfh/' + self.config['jfh']['flight_plan'])
+            path_to_flight_plan = resolve_asset_path(
+                self.case_dir, 'jfh', self.config['jfh']['flight_plan'], shared_subdir='flight_plan'
+            )
+            dataframe = pd.read_csv(path_to_flight_plan)
         except KeyError:
             # print("WARNING: flight plan not set")
             return

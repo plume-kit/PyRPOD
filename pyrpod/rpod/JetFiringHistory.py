@@ -5,6 +5,7 @@ import sympy as sp
 from pyrpod.util.io.file_print import print_JFH
 from pyrpod.logging_utils import get_logger
 from pyrpod.util.math.transform import rotation_matrix_from_vectors
+from pyrpod.util.io.fs import resolve_asset_path
 
 logger = get_logger("pyrpod.rpod.JetFiringHistory")
 
@@ -84,7 +85,7 @@ class JetFiringHistory:
         """
 
         try:
-            path_to_jfh = self.case_dir + 'jfh/' + self.config['jfh']['jfh']
+            path_to_jfh = resolve_asset_path(self.case_dir, 'jfh', self.config['jfh']['jfh'])
         except KeyError:
             # print("WARNING: Jet Firing History not set")
             self.JFH = None
