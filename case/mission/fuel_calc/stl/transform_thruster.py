@@ -1,11 +1,17 @@
 from stl import mesh
+from pathlib import Path
+_repo_root = next(
+    p for p in Path(__file__).resolve().parents
+    if (p / 'data').is_dir() and (p / 'pyrpod').is_dir()
+)
+_DATA_STL = _repo_root / 'data' / 'stl'
 import numpy as np
 import math
 
 # for example
 cant_angle = 0
 
-mesh = mesh.Mesh.from_file('thruster_ATV216.stl')
+mesh = mesh.Mesh.from_file(str(_DATA_STL / 'thruster_ATV216.stl'))
 
 # center on origin
 mesh.translate([-0.19/2,-0.095/2,-0.095/2])
