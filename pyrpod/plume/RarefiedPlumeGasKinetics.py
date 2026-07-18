@@ -34,6 +34,8 @@ Omega = integral domain
 ' = simplified analytical results
 """
 
+import warnings
+
 import numpy as np
 from scipy import integrate
 from scipy.special import erf
@@ -119,6 +121,45 @@ def get_N_factor(Q, S_0):
     term2 = 0.5 * np.sqrt(np.pi * Q ** 3)
     term3 = 0.75 + 3 * Q * S_0 ** 2 + Q ** 2 * S_0 ** 4
     return term1 + term2 * term3 * erf_term
+
+
+def get_Q_full(r, epsilon, X, Z):
+    '''
+        Full special factor Q [Cai & Wang 2012, Eq. 9] in closed form.
+
+        Eq. 9 defines Q = cos^2(psi) * [sum_n P_n(sin(psi) sin(epsilon))
+        * (r/sqrt(X^2+Z^2))^n]^2 with P_n the Legendre polynomials. The
+        series is the Legendre generating function sum_n P_n(x) t^n =
+        1/sqrt(1 - 2*x*t + t^2) evaluated at x = sin(psi)sin(epsilon),
+        t = r/sqrt(X^2+Z^2), which collapses (with cos^2(psi) =
+        X^2/(X^2+Z^2)) to
+
+            Q = X^2 / (X^2 + Z^2 - 2*Z*r*sin(epsilon) + r^2)
+
+        so no series truncation or convergence loop is needed. The
+        denominator equals X^2 + (Z - r*sin(epsilon))^2 +
+        (r*cos(epsilon))^2 >= X^2 > 0, hence 0 < Q <= 1 always, which
+        also guarantees the overflow-safe exponential combination in
+        get_K_factor. On the centerline (Z = 0) this reduces to
+        Q(r) = X^2/(X^2 + r^2).
+
+        Parameters
+        ----------
+        r : float or ndarray
+            radial integration variable over the exit disk, 0 <= r <= R_0 (m)
+        epsilon : float or ndarray
+            angular integration variable, -pi/2 <= epsilon <= pi/2 (rad)
+        X : float
+            axial coordinate of the field point, X > 0 (m)
+        Z : float
+            transverse coordinate of the field point (m)
+
+        Returns
+        -------
+        float or ndarray
+            special factor Q at (r, epsilon) for field point (X, 0, Z)
+    '''
+    return X ** 2 / (X ** 2 + Z ** 2 - 2 * Z * r * np.sin(epsilon) + r ** 2)
 
 def get_maxwellian_pressure(rho_inf, U, S, sigma, theta, T, T_w):
     '''
@@ -1055,3 +1096,307 @@ class SimplifiedGasKinetics:
 
             heat_flux = get_maxwellian_heat_transfer(rho_inf, S, self.sigma, self.theta, T, self.T_w, self.R, self.gamma)
         return heat_flux
+
+
+class CollisionlessGasKinetics(SimplifiedGasKinetics):
+    '''
+        Full collisionless analytical plume model [Cai & Wang 2012,
+        Sec. II.A, Eqs. 5-12]: a free jet expanding from a round exit
+        into vacuum, evaluated at a point (X, 0, Z) in front of the
+        nozzle (X > 0). Unlike the parent SimplifiedGasKinetics (which
+        substitutes the far-field Q' of Eq. 13), this class integrates
+        the exact special factor Q of Eq. 9 -- via its closed form, see
+        get_Q_full -- over the finite exit disk, so it remains valid in
+        the near field.
+
+        The field solutions (Eqs. 5-8) are double integrals over
+        r in [0, R_0] and epsilon in [-pi/2, pi/2]. They are evaluated
+        with tensor-product Gauss-Legendre quadrature: the integrands
+        are analytic on the compact rectangle (the denominator of Q is
+        bounded below by X^2 > 0), so Gauss-Legendre converges
+        geometrically. The order is doubled (40 -> 80 -> 160) until two
+        successive orders agree to QUAD_RTOL; the finer result is kept.
+        In practice order 40 already reaches machine precision except
+        very near the nozzle lip (X -> 0, Z ~ R_0), where the density
+        field has a singularity [Cai & Wang 2012, Sec. III].
+
+        Centerline closed forms (Eqs. 18-21) and the Maxwell gas-surface
+        interface are inherited from SimplifiedGasKinetics; the exact
+        analytical solutions reduce to Eqs. 18-21 on the centerline, so
+        the inherited methods are exact there. The inherited surface
+        methods (get_pressure, get_shear_pressure, get_heat_flux)
+        dispatch to this class's overridden field getters, so they are
+        fed by the full-model n, U, W, T.
+
+        Attributes
+        ----------
+        (all of SimplifiedGasKinetics, plus)
+
+        I_K : float
+            integral of r * exp(-S_0^2) * K over the exit disk [Eq. 5]
+
+        I_M : float
+            integral of r * exp(-S_0^2) * M over the exit disk [Eq. 6]
+
+        I_W : float
+            integral of (Z - r sin(epsilon)) * r * exp(-S_0^2) * M over
+            the exit disk [Eq. 7]
+
+        I_N : float
+            integral of r * exp(-S_0^2) * N over the exit disk [Eq. 8]
+
+        Methods
+        -------
+        get_num_density_ratio()
+
+        get_U_normalized()
+
+        get_W_normalized()
+
+        get_Vr_normalized()
+
+        get_temp_ratio()
+
+        get_pressure_ratio()
+
+        (get_pressure / get_shear_pressure / get_heat_flux and the
+        centerline closed forms are inherited from SimplifiedGasKinetics)
+    '''
+
+    QUAD_ORDERS = (40, 80, 160)
+    QUAD_RTOL = 1e-9
+
+    def __init__(self, distance, theta, thruster_characteristics, T_w, sigma):
+        '''
+            Mirrors SimplifiedGasKinetics(distance, theta,
+            thruster_characteristics, T_w, sigma) exactly; X = d*cos(theta)
+            and Z = d*sin(theta) are derived internally. Additionally
+            precomputes the four field integrals of Eqs. 5-8.
+        '''
+        super().__init__(distance, theta, thruster_characteristics, T_w, sigma)
+        self.set_field_integrals()
+
+        return
+
+    def _compute_field_integrals(self, order):
+        '''
+            Evaluate the four exit-disk integrals of Eqs. 5-8 with a
+            tensor-product Gauss-Legendre rule of the given order per
+            axis, over r in [0, R_0] and epsilon in [-pi/2, pi/2].
+
+            The K, M, N factors carry the exp(-S_0^2) prefactor of the
+            field solutions (see get_K_factor), keeping every term
+            bounded for large speed ratios.
+
+            Parameters
+            ----------
+            order : int
+                number of Gauss-Legendre nodes per axis
+
+            Returns
+            -------
+            tuple of float
+                (I_K, I_M, I_W, I_N)
+        '''
+        nodes, weights = np.polynomial.legendre.leggauss(order)
+        # map [-1, 1] to [0, R_0] (radial) and [-pi/2, pi/2] (angular)
+        r = 0.5 * self.R_0 * (nodes + 1)
+        w_r = 0.5 * self.R_0 * weights
+        eps = 0.5 * np.pi * nodes
+        w_eps = 0.5 * np.pi * weights
+
+        R, E = np.meshgrid(r, eps, indexing='ij')
+        W2D = np.outer(w_r, w_eps)
+
+        Q = get_Q_full(R, E, self.X, self.Z)
+        K = get_K_factor(Q, self.S_0)
+        M = get_M_factor(Q, self.S_0)
+        N = get_N_factor(Q, self.S_0)
+
+        I_K = np.sum(W2D * R * K)
+        I_M = np.sum(W2D * R * M)
+        I_W = np.sum(W2D * (self.Z - R * np.sin(E)) * R * M)
+        I_N = np.sum(W2D * R * N)
+        return I_K, I_M, I_W, I_N
+
+    def set_field_integrals(self):
+        '''
+            Setter for the field integrals I_K, I_M, I_W, I_N of
+            Eqs. 5-8, with quadrature-order doubling until two
+            successive orders agree to QUAD_RTOL (see class docstring
+            for the accuracy rationale). Warns if the finest order is
+            reached without convergence (only possible extremely close
+            to the nozzle-lip singularity).
+
+            Parameters
+            ----------
+            None.
+
+            Returns
+            -------
+            None.
+        '''
+        previous = None
+        for order in self.QUAD_ORDERS:
+            current = self._compute_field_integrals(order)
+            if previous is not None and self._integrals_converged(previous, current):
+                break
+            previous = current
+        else:
+            warnings.warn(
+                'CollisionlessGasKinetics quadrature did not converge to '
+                'rtol={} at order {} for point (X={}, Z={}); using finest '
+                'result.'.format(self.QUAD_RTOL, self.QUAD_ORDERS[-1],
+                                 self.X, self.Z),
+                RuntimeWarning)
+
+        self.I_K, self.I_M, self.I_W, self.I_N = current
+
+        return
+
+    def _integrals_converged(self, previous, current):
+        '''
+            Convergence test between two quadrature orders. I_K, I_M and
+            I_N are strictly positive, so a relative test applies; I_W
+            can legitimately vanish (centerline, Eq. 20), so its
+            difference is measured against the natural magnitude of its
+            integrand, (|Z| + R_0) * I_M.
+
+            Parameters
+            ----------
+            previous : tuple of float
+                integrals from the coarser rule
+            current : tuple of float
+                integrals from the finer rule
+
+            Returns
+            -------
+            bool
+                True when every integral has converged to QUAD_RTOL
+        '''
+        rtol = self.QUAD_RTOL
+        I_K0, I_M0, I_W0, I_N0 = previous
+        I_K1, I_M1, I_W1, I_N1 = current
+        scale_W = (abs(self.Z) + self.R_0) * abs(I_M1)
+        return (abs(I_K1 - I_K0) <= rtol * abs(I_K1)
+                and abs(I_M1 - I_M0) <= rtol * abs(I_M1)
+                and abs(I_N1 - I_N0) <= rtol * abs(I_N1)
+                and abs(I_W1 - I_W0) <= rtol * scale_W)
+
+    def get_num_density_ratio(self):
+        '''
+            Number density at (X, 0, Z) normalized by the exit number
+            density, n_1/n_0 [Cai & Wang 2012, Eq. 5]. The exp(-S_0^2)
+            prefactor is carried inside I_K (see get_K_factor).
+
+            Parameters
+            ----------
+            None.
+
+            Returns
+            -------
+            float
+                n_1(X, 0, Z) / n_0
+        '''
+        return self.I_K / (np.pi ** 1.5 * self.X ** 2)
+
+    def get_U_normalized(self):
+        '''
+            Macroscopic x-velocity at (X, 0, Z) normalized by
+            sqrt(beta_0), i.e. U_1 * sqrt(beta_0) [Cai & Wang 2012,
+            Eq. 6]. The shared prefactor and n_0/n_1 reduce the ratio to
+            I_M / I_K.
+
+            Parameters
+            ----------
+            None.
+
+            Returns
+            -------
+            float
+                U_1(X, 0, Z) * sqrt(beta_0)
+        '''
+        return self.I_M / self.I_K
+
+    def get_W_normalized(self):
+        '''
+            Macroscopic z-velocity at (X, 0, Z) normalized by
+            sqrt(beta_0), i.e. W_1 * sqrt(beta_0) [Cai & Wang 2012,
+            Eq. 7]. Eq. 7's integrand factor is read as
+            (Z - r sin(epsilon)); the printed "(Z - r sin(theta))" is a
+            typo -- sin(epsilon) is the convention consistent with Q
+            (Eq. 9) and it makes W vanish on the centerline as Eq. 20
+            requires. Eq. 7's extra 1/X (prefactor 1/X^3 vs 1/X^2)
+            reduces the ratio to I_W / (X * I_K).
+
+            Parameters
+            ----------
+            None.
+
+            Returns
+            -------
+            float
+                W_1(X, 0, Z) * sqrt(beta_0)
+        '''
+        return self.I_W / (self.X * self.I_K)
+
+    def get_Vr_normalized(self):
+        '''
+            Radial (spherical, from the nozzle exit center) velocity
+            component in the Y = 0 plane, normalized by sqrt(beta_0):
+            V_r = (X*U + Z*W)/sqrt(X^2 + Z^2) [Cai & Wang 2012,
+            Figs. 16-18].
+
+            Parameters
+            ----------
+            None.
+
+            Returns
+            -------
+            float
+                V_r(X, 0, Z) * sqrt(beta_0)
+        '''
+        U = self.get_U_normalized()
+        W = self.get_W_normalized()
+        return (self.X * U + self.Z * W) / np.sqrt(self.X ** 2 + self.Z ** 2)
+
+    def get_temp_ratio(self):
+        '''
+            Temperature at (X, 0, Z) normalized by the exit temperature,
+            T_1/T_0 [Cai & Wang 2012, Eq. 8]. With beta_0 = 1/(2*R*T_0),
+            the kinetic term -(U_1^2 + W_1^2)/(3*R*T_0) equals
+            -(2/3) * [(U_1 sqrt(beta_0))^2 + (W_1 sqrt(beta_0))^2].
+
+            Parameters
+            ----------
+            None.
+
+            Returns
+            -------
+            float
+                T_1(X, 0, Z) / T_0
+        '''
+        U = self.get_U_normalized()
+        W = self.get_W_normalized()
+        return -(2 / 3) * (U ** 2 + W ** 2) + (4 / 3) * self.I_N / self.I_K
+
+    def get_pressure_ratio(self):
+        '''
+            Flowfield static pressure at (X, 0, Z) normalized by the exit
+            static pressure: p_1/p_0 = (n_1/n_0) * (T_1/T_0) from the
+            ideal gas law with the LOCAL temperature. Cai & Wang 2012
+            (p. 64, Fig. 13 discussion) explicitly warn that computing
+            the local pressure as n(X, 0, Z) * k * T_0 is theoretically
+            invalid, because the flowfield temperature is always lower
+            than the exit temperature T_0.
+
+            Parameters
+            ----------
+            None.
+
+            Returns
+            -------
+            float
+                p_1(X, 0, Z) / p_0
+        '''
+        return self.get_num_density_ratio() * self.get_temp_ratio()
