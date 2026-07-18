@@ -22,7 +22,8 @@ Future work (no new dependencies planned):
 """
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from concurrent.futures import ProcessPoolExecutor
+from typing import Any, Dict, List, Optional, Sequence
 
 import numpy as np
 from pyrpod.plume.RarefiedPlumeGasKinetics import SimplifiedGasKinetics
@@ -313,6 +314,87 @@ def _compute_plume_strikes_scalar(
             "heat_flux_load": heat_flux_load,
         })
     return result
+
+
+# Per-process state for parallel workers. Populated once per worker by
+# _parallel_worker_init so the (N,3) target arrays are shipped to each worker
+# a single time instead of once per submitted firing. Memory therefore scales
+# with workers x faces, never firings x faces.
+_WORKER_STATE: Dict[str, Any] = {}
+
+
+def _parallel_worker_init(
+    face_centroids: np.ndarray,
+    target_unit_normals: np.ndarray,
+    thruster_data: Dict[str, Any],
+    thruster_metrics: Optional[Dict[str, Any]],
+    plume_params: Dict[str, Any],
+) -> None:
+    """ProcessPoolExecutor initializer: cache shared per-run inputs."""
+    _WORKER_STATE['face_centroids'] = face_centroids
+    _WORKER_STATE['target_unit_normals'] = target_unit_normals
+    _WORKER_STATE['thruster_data'] = thruster_data
+    _WORKER_STATE['thruster_metrics'] = thruster_metrics
+    _WORKER_STATE['plume_params'] = plume_params
+
+
+def _parallel_worker_compute(task) -> Any:
+    """Compute strikes for one firing inside a worker process.
+
+    task is (firing_index, jfh_step); returns (firing_index, result dict).
+    """
+    firing_index, jfh_step = task
+    result = _compute_plume_strikes_core(
+        face_centroids=_WORKER_STATE['face_centroids'],
+        target_unit_normals=_WORKER_STATE['target_unit_normals'],
+        thruster_data=_WORKER_STATE['thruster_data'],
+        thruster_metrics=_WORKER_STATE['thruster_metrics'],
+        jfh_step=jfh_step,
+        plume_params=_WORKER_STATE['plume_params'],
+    )
+    return firing_index, result
+
+
+def run_parallel_plume_strikes(
+    jfh_steps: Sequence[Dict[str, Any]],
+    face_centroids: np.ndarray,
+    target_unit_normals: np.ndarray,
+    thruster_data: Dict[str, Any],
+    thruster_metrics: Optional[Dict[str, Any]],
+    plume_params: Dict[str, Any],
+    workers: int,
+) -> List[Dict[str, np.ndarray]]:
+    """Compute per-firing strike results across processes, one firing per task.
+
+    All inputs must be plain serializable data (NumPy arrays, dicts,
+    primitives) — full study/vehicle/environment objects are never pickled.
+    Results are returned as a list indexed by firing, preserving JFH order
+    regardless of completion order; cumulative accumulation and VTK output
+    remain the caller's responsibility (serial, in the parent process).
+
+    Raises whatever the executor or workers raise; callers are expected to
+    fall back to the serial path with a clear message.
+    """
+    results: List[Optional[Dict[str, np.ndarray]]] = [None] * len(jfh_steps)
+    with ProcessPoolExecutor(
+        max_workers=workers,
+        initializer=_parallel_worker_init,
+        initargs=(
+            face_centroids,
+            target_unit_normals,
+            thruster_data,
+            thruster_metrics,
+            plume_params,
+        ),
+    ) as executor:
+        futures = [
+            executor.submit(_parallel_worker_compute, (i, step))
+            for i, step in enumerate(jfh_steps)
+        ]
+        for future in futures:
+            firing_index, result = future.result()
+            results[firing_index] = result
+    return results
 
 
 def accumulate_cumulative(

@@ -30,6 +30,8 @@ from pyrpod.rpod.PlumeStudyExport import PlumeStudyExport
 from pyrpod.plume.PlumeStrikeCalculator import (
     compute_face_centroids,
     compute_plume_strikes,
+    extract_plume_params,
+    run_parallel_plume_strikes,
 )
 
 logger = get_logger("pyrpod.rpod.PlumeStrikeEstimationStudy")
@@ -757,19 +759,94 @@ class PlumeStrikeEstimationStudy (MissionPlanner):
 
         return distance, norm_distance, unit_distance
 
-    def jfh_plume_strikes(self):
+    def _resolve_parallel_options(self, parallel, workers, n_firings):
+        """
+            Resolves parallel execution settings for jfh_plume_strikes().
+
+            Precedence: explicit method arguments override the optional
+            [exec] config section, which defaults to serial execution.
+
+            Config keys (both optional):
+            - [exec] parallel : bool — enable process-based parallelization
+              across firings (default false).
+            - [exec] workers : int — number of worker processes. Defaults to
+              min(os.cpu_count(), n_firings) when parallel is enabled.
+
+            Returns
+            -------
+            (bool, int)
+                (parallel_enabled, workers) — workers is capped at n_firings;
+                workers <= 1 resolves to serial execution.
+        """
+        config = self.environment.config
+        if parallel is None:
+            try:
+                parallel = config.getboolean('exec', 'parallel', fallback=False)
+            except ValueError as exc:
+                raise ValueError(
+                    "Invalid config value for [exec] parallel: expected a "
+                    "boolean (true/false)."
+                ) from exc
+        if workers is None:
+            try:
+                workers = config.getint('exec', 'workers', fallback=None)
+            except ValueError as exc:
+                raise ValueError(
+                    "Invalid config value for [exec] workers: expected a "
+                    "positive integer."
+                ) from exc
+        if workers is not None and workers < 1:
+            raise ValueError(
+                f"workers must be a positive integer, got {workers}."
+            )
+
+        if not parallel:
+            return False, 1
+
+        if workers is None:
+            workers = min(os.cpu_count() or 1, n_firings)
+        # Never spawn more workers than there are firings to compute.
+        workers = min(workers, n_firings)
+        if workers <= 1:
+            return False, 1
+        return True, workers
+
+    def jfh_plume_strikes(self, parallel=None, workers=None):
         """
             Calculates number of plume strikes according to data provided for RPOD analysis.
-            Method does not take any parameters but assumes that study assets are correctly configured.
+            Method assumes that study assets are correctly configured.
             These assets include one JetFiringHistory, one TargetVehicle, and one VisitingVehicle.
             A Simple plume model is used. It does not calculate plume physics, only strikes. which
             are determined with a user defined "plume cone" geometry. Simple vector mathematics is
             used to determine if an VTK surface elements is struck by the "plume cone".
 
+            Parameters
+            ----------
+            parallel : bool, optional
+                Enable process-based parallelization across firings. Defaults
+                to None, meaning "use the optional [exec] parallel config key",
+                which itself defaults to false (serial, legacy behavior).
+            workers : int, optional
+                Number of worker processes when parallel execution is enabled.
+                Defaults to None, meaning "use the optional [exec] workers
+                config key", falling back to min(os.cpu_count(), n_firings).
+
+            Notes
+            -----
+            Only independent per-firing strike arrays are computed in worker
+            processes; cumulative arrays (cum_strikes, max_pressures,
+            max_shears, cum_heat_flux_load) are accumulated serially in
+            original firing order, and VTK output is written serially by the
+            parent process. If the parallel path fails to initialize or run,
+            the method logs a warning and falls back to serial execution.
+
             Returns
             -------
-            Method doesn't currently return anything. Simply produces data as needed.
-            Does the method need to return a status message? or pass similar data?
+            dict
+                firing_data keyed by firing number ('1'..'N'), each holding
+                per-face arrays: strikes, cum_strikes, and, when kinetics is
+                enabled, pressures, max_pressures, shear_stress, max_shears,
+                heat_flux_rate, heat_flux_load, cum_heat_flux_load.
         """
         # Prepare results directories and target data
         self.create_results_dir()
@@ -788,23 +865,58 @@ class PlumeStrikeEstimationStudy (MissionPlanner):
 
         firing_data = {}
 
-        # Loop through each firing in the JFH and delegate to impingement module
-        for firing in range(len(self.jfh.JFH)):
-            step = {
+        n_firings = len(self.jfh.JFH)
+
+        # Build serializable step dicts once; shared by serial and parallel paths.
+        steps = []
+        for firing in range(n_firings):
+            steps.append({
                 'thrusters': self.jfh.JFH[firing]['thrusters'],
                 'xyz': np.array(self.jfh.JFH[firing]['xyz']),
                 'dcm': np.array(self.jfh.JFH[firing]['dcm']),
                 't': float(self.jfh.JFH[firing]['t'])
-            }
+            })
 
-            result = compute_plume_strikes(
-                target_mesh=target,
-                target_unit_normals=target_normals,
-                vv=self.vv,
-                jfh_step=step,
-                environment=self.environment,
-                face_centroids=target_centroids,
-            )
+        parallel_enabled, n_workers = self._resolve_parallel_options(parallel, workers, n_firings)
+
+        # Optionally compute independent per-firing results in worker
+        # processes. Workers receive only plain serializable inputs (arrays,
+        # dicts, config scalars) — never the study/vehicle/environment objects.
+        per_firing_results = None
+        if parallel_enabled:
+            try:
+                per_firing_results = run_parallel_plume_strikes(
+                    jfh_steps=steps,
+                    face_centroids=target_centroids,
+                    target_unit_normals=target_normals,
+                    thruster_data=self.vv.thruster_data,
+                    thruster_metrics=getattr(self.vv, 'thruster_metrics', None),
+                    plume_params=extract_plume_params(self.environment),
+                    workers=n_workers,
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Parallel plume strike execution failed (%s: %s); "
+                    "falling back to serial execution.",
+                    type(exc).__name__, exc,
+                )
+                per_firing_results = None
+
+        # Loop through each firing in the JFH and delegate to impingement module
+        for firing in range(n_firings):
+            step = steps[firing]
+
+            if per_firing_results is not None:
+                result = per_firing_results[firing]
+            else:
+                result = compute_plume_strikes(
+                    target_mesh=target,
+                    target_unit_normals=target_normals,
+                    vv=self.vv,
+                    jfh_step=step,
+                    environment=self.environment,
+                    face_centroids=target_centroids,
+                )
 
             strikes = result["strikes"]
             cum_strikes = cum_strikes + strikes
