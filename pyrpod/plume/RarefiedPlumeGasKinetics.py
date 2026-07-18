@@ -161,6 +161,66 @@ def get_Q_full(r, epsilon, X, Z):
     '''
     return X ** 2 / (X ** 2 + Z ** 2 - 2 * Z * r * np.sin(epsilon) + r ** 2)
 
+
+def get_far_field_velocity_normalized(S_0):
+    '''
+        Far-field centerline velocity asymptote, lim U_1 * sqrt(beta_0)
+        as X -> infinity [Cai & Wang 2012, Eqs. 22 and 24]. A function of
+        the exit speed ratio only: far enough from the exit the problem
+        degenerates to a small-hole effusion flow, so no nozzle geometry
+        factors remain.
+
+        Evaluated by dividing numerator and denominator through by
+        [1 + erf(S_0)] * exp(S_0^2), which would itself overflow for
+        S_0 >~ 26; the residual factor exp(-S_0^2) / (1 + erf(S_0)) is
+        bounded for S_0 > 0.
+
+        Parameters
+        ----------
+        S_0 : float
+            molecular speed ratio at the nozzle exit, S_0 > 0
+
+        Returns
+        -------
+        float
+            lim (X -> infinity) U_1(X, 0, 0) * sqrt(beta_0)
+    '''
+    inv_E = np.exp(-S_0 ** 2) / (1 + erf(S_0))
+    sqpi = np.sqrt(np.pi)
+    return S_0 + (inv_E + sqpi * S_0) / (S_0 * inv_E + (0.5 + S_0 ** 2) * sqpi)
+
+
+def get_far_field_temp_ratio(S_0):
+    '''
+        Far-field centerline temperature asymptote, lim T_1/T_0 as
+        X -> infinity [Cai & Wang 2012, Eqs. 23-24]. A function of the
+        exit speed ratio only (see get_far_field_velocity_normalized).
+
+        Implemented as -2/3 * G^2 + 4*N(Q=1)/(3*K(Q=1)) with G of
+        Eq. 24, i.e. the Q -> 1 limit of Eq. 17; this reads Eq. 23's
+        printed denominator "3 S_0 + (1/2 + S_0^2) sqrt(pi) [...]" with
+        the 3 distributing over the whole denominator, 3*K(Q=1). The
+        equivalence was verified independently to 40 digits. Overflow
+        safety as in get_far_field_velocity_normalized.
+
+        Parameters
+        ----------
+        S_0 : float
+            molecular speed ratio at the nozzle exit, S_0 > 0
+
+        Returns
+        -------
+        float
+            lim (X -> infinity) T_1(X, 0, 0) / T_0
+    '''
+    inv_E = np.exp(-S_0 ** 2) / (1 + erf(S_0))
+    sqpi = np.sqrt(np.pi)
+    G = get_far_field_velocity_normalized(S_0)
+    num = S_0 * (5 + 2 * S_0 ** 2) * inv_E + 2 * sqpi * (0.75 + 3 * S_0 ** 2 + S_0 ** 4)
+    den = 3 * (S_0 * inv_E + (0.5 + S_0 ** 2) * sqpi)
+    return -(2 / 3) * G ** 2 + num / den
+
+
 def get_maxwellian_pressure(rho_inf, U, S, sigma, theta, T, T_w):
     '''
         Rarefied Gas Dynamics - Shen - eq. 4.19

@@ -15,7 +15,11 @@
 import numpy as np
 import pytest
 
-from pyrpod.plume.RarefiedPlumeGasKinetics import SimplifiedGasKinetics
+from pyrpod.plume.RarefiedPlumeGasKinetics import (
+    SimplifiedGasKinetics,
+    get_far_field_temp_ratio,
+    get_far_field_velocity_normalized,
+)
 
 pytestmark = pytest.mark.plume
 
@@ -108,6 +112,17 @@ def test_centerline_solution_pinned(point, expected):
 
 
 @pytest.mark.parametrize("S_0", [1.0, 2.0, 3.0])
+def test_far_field_asymptote_functions_pinned(S_0):
+    """Pin the Eq. 22-24 module-level asymptote functions against the
+    independent mpmath evaluation (tolerance rationale as RTOL_PINNED)."""
+    U_ref, T_ref = ASYMPTOTE_CASES[S_0]
+    assert get_far_field_velocity_normalized(S_0) == pytest.approx(
+        U_ref, rel=RTOL_PINNED)
+    assert get_far_field_temp_ratio(S_0) == pytest.approx(
+        T_ref, rel=RTOL_PINNED)
+
+
+@pytest.mark.parametrize("S_0", [1.0, 2.0, 3.0])
 def test_centerline_velocity_approaches_asymptote(S_0):
     """Centerline U converges to the Eq. 22/24 far-field asymptote.
 
@@ -115,7 +130,7 @@ def test_centerline_velocity_approaches_asymptote(S_0):
     relative, so rel=1e-5 passes with an order-of-magnitude margin while
     still requiring genuine convergence.
     """
-    U_inf = ASYMPTOTE_CASES[S_0][0]
+    U_inf = get_far_field_velocity_normalized(S_0)
     X = 1000 * (D_NOZZLE / 2)
     plume = make_plume(X, 0.0, S_0)
     assert plume.get_velocity_centerline() == pytest.approx(U_inf, rel=1e-5)
@@ -132,7 +147,7 @@ def test_centerline_temperature_approaches_asymptote(S_0):
     rel=1e-4 passes with margin for both the constant-N approximation
     and the exact Eq. 21 quadrature, while still requiring convergence.
     """
-    T_inf = ASYMPTOTE_CASES[S_0][1]
+    T_inf = get_far_field_temp_ratio(S_0)
     X = 5000 * (D_NOZZLE / 2)
     plume = make_plume(X, 0.0, S_0)
     assert plume.get_temp_centerline() == pytest.approx(T_inf, rel=1e-4)
