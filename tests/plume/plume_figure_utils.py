@@ -404,11 +404,12 @@ def density_contour_figure(kn_label, fig_stem):
         handles.append(plt.Line2D([], [], color='k', lw=1.0,
                                   label='DSMC (bottom, digitized)'))
     ax.legend(handles=handles, fontsize=7, loc='upper right')
+    far = x >= 1.0  # near the exit the simplified (R_0/X)^2 form diverges
     annotate_error(
         ax,
-        f'max |n_S/n_A - 1| = {max_rel_diff(n_simp, n_full):.2g}\n'
-        f'max |n_Sim/n_A - 1| = {max_rel_diff(n_simons, n_full):.2g}\n'
-        '(over plotted grid; largest in the lip/tail regions)')
+        f'max |n_S/n_A - 1| = {max_rel_diff(n_simp[:, far], n_full[:, far]):.2g}\n'
+        f'max |n_Sim/n_A - 1| = {max_rel_diff(n_simons[:, far], n_full[:, far]):.2g}\n'
+        '(over grid with X/D $\\geq$ 1; largest in the plume tails)')
     return save_figure(fig, fig_stem)
 
 
