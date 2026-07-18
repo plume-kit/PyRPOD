@@ -34,14 +34,192 @@ Omega = integral domain
 ' = simplified analytical results
 """
 
+import warnings
+
 import numpy as np
-import sympy as sp
 from scipy import integrate
-import matplotlib.pyplot as plt
+from scipy.special import erf
 
 #define constants
 AVOGADROS_NUMBER = 6.0221e23
 GAS_CONSTANT = 8.314
+
+
+def get_K_factor(Q, S_0):
+    '''
+        Scaled special factor exp(-S_0^2) * K [Cai & Wang 2012, Eq. 10].
+
+        The exp(-S_0^2) prefactor of the field solutions (Eqs. 5-8, 14)
+        is combined analytically with Eq. 10's exp(Q * S_0^2) into
+        exp(-S_0^2 * (1 - Q)). Since Q <= 1 both exponentials are <= 1,
+        so this never overflows for large speed ratios, while the plain
+        exp(Q * S_0^2) would. The [1 + erf(...)] factor is bounded by 2
+        and needs no scaling.
+
+        Parameters
+        ----------
+        Q : float
+            special factor Q (full or simplified), 0 < Q <= 1
+        S_0 : float
+            molecular speed ratio at the nozzle exit
+
+        Returns
+        -------
+        float
+            exp(-S_0^2) * K(Q, S_0)
+    '''
+    erf_term = (1 + erf(S_0 * np.sqrt(Q))) * np.exp(-S_0 ** 2 * (1 - Q))
+    term1 = Q * S_0 * np.exp(-S_0 ** 2)
+    term2 = (0.5 + Q * S_0 ** 2) * np.sqrt(np.pi * Q)
+    return Q * (term1 + term2 * erf_term)
+
+
+def get_M_factor(Q, S_0):
+    '''
+        Scaled special factor exp(-S_0^2) * M [Cai & Wang 2012, Eq. 11].
+
+        Overflow-safe exponential combination as in get_K_factor.
+
+        Parameters
+        ----------
+        Q : float
+            special factor Q (full or simplified), 0 < Q <= 1
+        S_0 : float
+            molecular speed ratio at the nozzle exit
+
+        Returns
+        -------
+        float
+            exp(-S_0^2) * M(Q, S_0)
+    '''
+    erf_term = (1 + erf(S_0 * np.sqrt(Q))) * np.exp(-S_0 ** 2 * (1 - Q))
+    term1 = (1 + Q * S_0 ** 2) * np.exp(-S_0 ** 2)
+    term2 = S_0 * (1.5 + Q * S_0 ** 2) * np.sqrt(np.pi * Q)
+    return Q ** 2 * (term1 + term2 * erf_term)
+
+
+def get_N_factor(Q, S_0):
+    '''
+        Scaled special factor exp(-S_0^2) * N [Cai & Wang 2012, Eq. 12].
+
+        Overflow-safe exponential combination as in get_K_factor.
+
+        Parameters
+        ----------
+        Q : float
+            special factor Q (full or simplified), 0 < Q <= 1
+        S_0 : float
+            molecular speed ratio at the nozzle exit
+
+        Returns
+        -------
+        float
+            exp(-S_0^2) * N(Q, S_0)
+    '''
+    erf_term = (1 + erf(S_0 * np.sqrt(Q))) * np.exp(-S_0 ** 2 * (1 - Q))
+    term1 = S_0 * Q ** 2 * (1.25 + Q * S_0 ** 2 / 2) * np.exp(-S_0 ** 2)
+    term2 = 0.5 * np.sqrt(np.pi * Q ** 3)
+    term3 = 0.75 + 3 * Q * S_0 ** 2 + Q ** 2 * S_0 ** 4
+    return term1 + term2 * term3 * erf_term
+
+
+def get_Q_full(r, epsilon, X, Z):
+    '''
+        Full special factor Q [Cai & Wang 2012, Eq. 9] in closed form.
+
+        Eq. 9 defines Q = cos^2(psi) * [sum_n P_n(sin(psi) sin(epsilon))
+        * (r/sqrt(X^2+Z^2))^n]^2 with P_n the Legendre polynomials. The
+        series is the Legendre generating function sum_n P_n(x) t^n =
+        1/sqrt(1 - 2*x*t + t^2) evaluated at x = sin(psi)sin(epsilon),
+        t = r/sqrt(X^2+Z^2), which collapses (with cos^2(psi) =
+        X^2/(X^2+Z^2)) to
+
+            Q = X^2 / (X^2 + Z^2 - 2*Z*r*sin(epsilon) + r^2)
+
+        so no series truncation or convergence loop is needed. The
+        denominator equals X^2 + (Z - r*sin(epsilon))^2 +
+        (r*cos(epsilon))^2 >= X^2 > 0, hence 0 < Q <= 1 always, which
+        also guarantees the overflow-safe exponential combination in
+        get_K_factor. On the centerline (Z = 0) this reduces to
+        Q(r) = X^2/(X^2 + r^2).
+
+        Parameters
+        ----------
+        r : float or ndarray
+            radial integration variable over the exit disk, 0 <= r <= R_0 (m)
+        epsilon : float or ndarray
+            angular integration variable, -pi/2 <= epsilon <= pi/2 (rad)
+        X : float
+            axial coordinate of the field point, X > 0 (m)
+        Z : float
+            transverse coordinate of the field point (m)
+
+        Returns
+        -------
+        float or ndarray
+            special factor Q at (r, epsilon) for field point (X, 0, Z)
+    '''
+    return X ** 2 / (X ** 2 + Z ** 2 - 2 * Z * r * np.sin(epsilon) + r ** 2)
+
+
+def get_far_field_velocity_normalized(S_0):
+    '''
+        Far-field centerline velocity asymptote, lim U_1 * sqrt(beta_0)
+        as X -> infinity [Cai & Wang 2012, Eqs. 22 and 24]. A function of
+        the exit speed ratio only: far enough from the exit the problem
+        degenerates to a small-hole effusion flow, so no nozzle geometry
+        factors remain.
+
+        Evaluated by dividing numerator and denominator through by
+        [1 + erf(S_0)] * exp(S_0^2), which would itself overflow for
+        S_0 >~ 26; the residual factor exp(-S_0^2) / (1 + erf(S_0)) is
+        bounded for S_0 > 0.
+
+        Parameters
+        ----------
+        S_0 : float
+            molecular speed ratio at the nozzle exit, S_0 > 0
+
+        Returns
+        -------
+        float
+            lim (X -> infinity) U_1(X, 0, 0) * sqrt(beta_0)
+    '''
+    inv_E = np.exp(-S_0 ** 2) / (1 + erf(S_0))
+    sqpi = np.sqrt(np.pi)
+    return S_0 + (inv_E + sqpi * S_0) / (S_0 * inv_E + (0.5 + S_0 ** 2) * sqpi)
+
+
+def get_far_field_temp_ratio(S_0):
+    '''
+        Far-field centerline temperature asymptote, lim T_1/T_0 as
+        X -> infinity [Cai & Wang 2012, Eqs. 23-24]. A function of the
+        exit speed ratio only (see get_far_field_velocity_normalized).
+
+        Implemented as -2/3 * G^2 + 4*N(Q=1)/(3*K(Q=1)) with G of
+        Eq. 24, i.e. the Q -> 1 limit of Eq. 17; this reads Eq. 23's
+        printed denominator "3 S_0 + (1/2 + S_0^2) sqrt(pi) [...]" with
+        the 3 distributing over the whole denominator, 3*K(Q=1). The
+        equivalence was verified independently to 40 digits. Overflow
+        safety as in get_far_field_velocity_normalized.
+
+        Parameters
+        ----------
+        S_0 : float
+            molecular speed ratio at the nozzle exit, S_0 > 0
+
+        Returns
+        -------
+        float
+            lim (X -> infinity) T_1(X, 0, 0) / T_0
+    '''
+    inv_E = np.exp(-S_0 ** 2) / (1 + erf(S_0))
+    sqpi = np.sqrt(np.pi)
+    G = get_far_field_velocity_normalized(S_0)
+    num = S_0 * (5 + 2 * S_0 ** 2) * inv_E + 2 * sqpi * (0.75 + 3 * S_0 ** 2 + S_0 ** 4)
+    den = 3 * (S_0 * inv_E + (0.5 + S_0 ** 2) * sqpi)
+    return -(2 / 3) * G ** 2 + num / den
+
 
 def get_maxwellian_pressure(rho_inf, U, S, sigma, theta, T, T_w):
     '''
@@ -79,7 +257,7 @@ def get_maxwellian_pressure(rho_inf, U, S, sigma, theta, T, T_w):
     p1 *= np.exp(- (S * np.cos(theta)) ** 2)
     p2 = (2 - sigma) * ((S * np.cos(theta)) ** 2 + 0.5)
     p2 += (S * np.cos(theta) * (sigma / 2) * np.sqrt(np.pi * T_w / T))
-    p2 *= 1 + sp.erf(S * np.cos(theta))
+    p2 *= 1 + erf(S * np.cos(theta))
     p = p1 + p2 
     p *= (rho_inf * U ** 2) / (2 * S ** 2)
     return p
@@ -111,7 +289,7 @@ def get_maxwellian_shear_pressure(rho_inf, U, S, sigma, theta):
 
     tau1 = np.exp(- (S * np.cos(theta)) ** 2)
     tau2 = np.sqrt(np.pi) * S * np.cos(theta)
-    tau2 *= (1 + sp.erf(S * np.cos(theta)))
+    tau2 *= (1 + erf(S * np.cos(theta)))
     tau = tau1 + tau2
     tau *= -(sigma * rho_inf * np.sin(theta) * U ** 2) / (2 * np.sqrt(np.pi) * S)
     return tau
@@ -150,7 +328,7 @@ def get_maxwellian_heat_transfer(rho_inf, S, sigma, theta, T, T_r, R, gamma):
             the pressure exerted on the surface element (N / m^2)
     '''
     q = (S ** 2) + (gamma / (gamma - 1)) - (((gamma + 1) * T_r) / (2 * (gamma - 1) * T))
-    q *= np.exp(- (S * np.cos(theta)) ** 2) + (np.sqrt(np.pi) * (S * np.cos(theta)) * (1 + sp.erf(S * np.cos(theta))))
+    q *= np.exp(- (S * np.cos(theta)) ** 2) + (np.sqrt(np.pi) * (S * np.cos(theta)) * (1 + erf(S * np.cos(theta))))
     q -= 0.5 * np.exp(- (S * np.cos(theta)) ** 2)
     q *= sigma * rho_inf * R * T * np.sqrt(R * T / (2 * np.pi))
     return q
@@ -206,7 +384,7 @@ class Simons:
         Number density from continuity equation with constant mass flux across different spherical surfaces.
         Return the ratio of number density at an analyzed point outside of the exit vs at the exit.
     '''
-    def __init__(self, gamma, R, T_c, P_c, R_0, r):
+    def __init__(self, gamma, R, T_c, P_c, R_0, r, kappa=None):
         '''
             Simple constructor, saves parameters to self.
 
@@ -223,8 +401,15 @@ class Simons:
             R_0 : float
                     nozzle exit radius (m)
             r : float
-                    distance from the evaluated point 
+                    distance from the evaluated point
                     to the nozzle exit center (m)
+            kappa : float, optional
+                    plume beaming exponent for the cosine-law decay
+                    function [Cai & Wang 2012, Eq. 26]. Defaults to
+                    Boyton's kappa = 2/(gamma - 1) [Cai & Wang 2012,
+                    Sec. II.C, refs. 22-23]. Paper-cited alternatives:
+                    kappa = 2 (Ashkenas & Sherman, ref. 20) and
+                    kappa = 1/(gamma - 1) (Albini, ref. 21).
 
             Returns
             -------
@@ -237,12 +422,11 @@ class Simons:
         self.P_c = P_c
         self.r = r
         self.R_0 = R_0
+        if kappa is None:
+            kappa = 2 / (gamma - 1) #Boyton 1967/68 from Cai2012 [22][23]
+        self.kappa = kappa
 
         self.set_normalization_constant()
-        #self.rho_throat = self.get_nozzle_throat_density()
-        #self.theta_max = self.get_limiting_turn_angle()
-        #self.A = self.get_normalization_constant()
-        #self.U_t = self.get_limiting_velocity()
 
     def get_nozzle_throat_density(self):
         '''
@@ -259,8 +443,10 @@ class Simons:
         '''
         #ideal gas law P_throat = rho_throat * R * T_throat
         #therefore: rho_throat = P_throat / (R * T_throat)
-        P_throat = self.P_c * 0.5283 #from Isentropic Flow Tables @ M = 1
-        T_throat = self.T_c * 0.8333 #from Isentropic Flow Tables @ M = 1
+        #isentropic ratios at M = 1: T*/T_c = 2/(gamma+1),
+        #P*/P_c = (2/(gamma+1))^(gamma/(gamma-1))
+        T_throat = self.T_c * (2 / (self.gamma + 1))
+        P_throat = self.P_c * (2 / (self.gamma + 1)) ** (self.gamma / (self.gamma - 1))
         rho_throat = P_throat / (self.R * T_throat)
         return rho_throat
 
@@ -281,28 +467,39 @@ class Simons:
 
     def get_plume_angular_density_decay_function(self, theta):
         '''
-            From Cai 2012. Solve for the density decay function at a given off-centerline angle.
-            Expression for kappa is chosen from Boyton 1967/68.
+            Solve for the density decay function at a given off-centerline
+            angle [Cai & Wang 2012, Eq. 26], f(theta) =
+            cos^kappa(pi*theta/(2*theta_max)) with the beaming exponent
+            kappa chosen at construction (default Boyton 2/(gamma-1)).
+
+            For theta >= theta_max the plume model region is empty (the
+            gas cannot turn past the limiting angle), so the decay
+            function is 0. Without this guard the cosine goes negative
+            and fractional kappa would produce complex numbers.
 
             Parameters
             ----------
             theta : float
                     plume centerline off-angle of current position (rad)
-            
+
             Returns
             -------
             float
                 evaluation of plume angular density decay function at theta
         '''
-        kappa = 2 / (self.gamma - 1) #Boyton 1967/68 from Cai2012 [22][23]
         theta_max = self.get_limiting_turn_angle()
-        f = (np.cos((np.pi / 2) * (theta / theta_max))) ** kappa
+        if theta >= theta_max:
+            return 0.0
+        f = (np.cos((np.pi / 2) * (theta / theta_max))) ** self.kappa
         return f
 
     def set_normalization_constant(self):
         '''
             From Lumpkin 1999. Setter for normalization constant.
-            Integrates theta from 0 to the limiting turn angle.
+            Numerically integrates sin(theta) * cos^kappa(pi*theta/(2*theta_max))
+            from 0 to the limiting turn angle. The integrand is real and
+            non-negative on [0, theta_max] for any kappa, so no complex
+            arithmetic can arise.
 
             Parameters
             ----------
@@ -313,17 +510,13 @@ class Simons:
             None.
         '''
         theta_max = self.get_limiting_turn_angle()
-        theta = sp.symbols('theta')
-        f = (sp.cos((sp.pi / 2) * (theta / theta_max))) ** (2 / (self.gamma - 1))
-        integrand = sp.sin(theta) * f
-        integral = sp.integrate(integrand, (theta, 0, theta_max)) #integrate from 0 to max turning angle
-        A = 0.5 * np.sqrt((self.gamma - 1) / (self.gamma + 1)) / (integral.evalf())
-        
-        # if A is complex, take the real part
-        if type(A) == sp.Add:
-            A = sp.re(A)
+        kappa = self.kappa
 
-        self.A = A
+        def integrand(theta):
+            return np.sin(theta) * np.cos((np.pi / 2) * (theta / theta_max)) ** kappa
+
+        integral, _ = integrate.quad(integrand, 0, theta_max)
+        self.A = 0.5 * np.sqrt((self.gamma - 1) / (self.gamma + 1)) / integral
         return
     
     def get_sonic_velocity(self):
@@ -340,7 +533,7 @@ class Simons:
             float
                 sonic velocity (m/s)
         '''
-        T_throat = self.T_c * 0.8333 #from Isentropic Flow Tables @ Mach = 1
+        T_throat = self.T_c * (2 / (self.gamma + 1)) #isentropic ratio at M = 1
         sonic_velocity = np.sqrt(self.gamma * self.R * T_throat)
         return sonic_velocity
 
@@ -374,24 +567,67 @@ class Simons:
 
     def get_num_density_ratio(self, theta):
         '''
-            Number density from continuity equation with constant mass flux across different spherical surfaces.
-            Return the ratio of number density at an analyzed point outside of the exit vs at the exit.
+            Number density from continuity equation with constant mass flux
+            across different spherical surfaces [Cai & Wang 2012, Eq. 25].
+
+            NOTE: this ratio is THROAT-referenced, n/n_s: the returned
+            value normalizes by the number density at the nozzle throat
+            (rho_s in the paper), not at the nozzle exit. For a ratio
+            comparable to the gas-kinetic classes (which normalize by the
+            exit density n_0), use get_num_density_ratio_exit.
+
+            Returns 0.0 for theta >= theta_max (empty plume region).
 
             Parameters
             ----------
             theta : float
                     Angle off centerline of the current point being analyzed (rad).
-            
+
             Returns
             -------
             float
-                the ratio of number density at an analyzed point outside of the exit vs at the exit
+                number density at the analyzed point normalized by the
+                nozzle THROAT number density, n/n_s
         '''
+        theta_max = self.get_limiting_turn_angle()
+        if theta >= theta_max:
+            return 0.0
         f = self.get_plume_angular_density_decay_function(theta)
-        #??? make own function for rho_ratio???
         rho_ratio = self.A * ((self.R_0/self.r) ** 2) * f #rho_ratio = density / nozzle throat denisty aka rho / rho_s
         n_ratio = rho_ratio
         return n_ratio
+
+    def get_num_density_ratio_exit(self, theta, exit_mach):
+        '''
+            Exit-referenced number density ratio n/n_0.
+
+            Rescales the throat-referenced Eq. 25 result by the isentropic
+            density ratio between the throat (M = 1) and the nozzle exit
+            (M = exit_mach):
+
+                n_s / n_0 = [(1 + (gamma-1)/2 * M_e^2) / ((gamma+1)/2)]^(1/(gamma-1))
+
+            This makes the Simons model directly comparable to the
+            gas-kinetic classes (SimplifiedGasKinetics,
+            CollisionlessGasKinetics), which normalize by the exit
+            number density n_0.
+
+            Parameters
+            ----------
+            theta : float
+                    Angle off centerline of the current point being analyzed (rad).
+            exit_mach : float
+                    Mach number at the nozzle exit plane.
+
+            Returns
+            -------
+            float
+                number density at the analyzed point normalized by the
+                nozzle EXIT number density, n/n_0
+        '''
+        throat_to_exit = ((1 + (self.gamma - 1) / 2 * exit_mach ** 2)
+                          / ((self.gamma + 1) / 2)) ** (1 / (self.gamma - 1))
+        return self.get_num_density_ratio(theta) * throat_to_exit
 
 # TODO save plume constants into self
 class SimplifiedGasKinetics:
@@ -600,8 +836,11 @@ class SimplifiedGasKinetics:
     
     def set_K_simple(self):
         '''
-            Setter for simplified special factor K. This simplification is just the 
-            substitution of Q for Q'.
+            Setter for simplified special factor K [Cai & Wang 2012, Eq. 10]
+            with Q substituted by Q'. Stored scaled by exp(-S_0^2) for
+            overflow safety (see get_K_factor); ratio methods (U, W, T)
+            are unaffected since the scaling cancels, and the density
+            method uses the scaled factor directly.
 
             Parameters
             ----------
@@ -611,21 +850,15 @@ class SimplifiedGasKinetics:
             -------
             None.
         '''
-        #K_simple = Q_simple * ((Q_simple * S_0) + ((0.5 + (Q_simple * S_0 ** 2)) * np.sqrt(np.pi * Q_simple) * 
-                               #(1 + sp.erf(S_0 * np.sqrt(Q_simple))) ** (Q_simple * S_0 ** 2)))
-        term1 = self.Q_simple * self.S_0
-        term2 = 0.5 + self.Q_simple * self.S_0 ** 2
-        term3 = np.sqrt(np.pi * self.Q_simple)
-        term4 = (1 + sp.erf(self.S_0 * np.sqrt(self.Q_simple))) * np.exp(self.Q_simple * self.S_0 ** 2)
-        K_simple = self.Q_simple * (term1 + term2 * term3 * term4)
-        self.K_simple = K_simple
+        self.K_simple = get_K_factor(self.Q_simple, self.S_0)
 
         return
-    
+
     def set_M_simple(self):
         '''
-            Setter for simplified special factor M. This simplification is just the 
-            substitution of Q for Q'.
+            Setter for simplified special factor M [Cai & Wang 2012, Eq. 11]
+            with Q substituted by Q'. Stored scaled by exp(-S_0^2) for
+            overflow safety (see get_K_factor).
 
             Paramters
             ---------
@@ -635,21 +868,15 @@ class SimplifiedGasKinetics:
             -------
             None.
         '''
-        #M_simple = (Q_simple ** 2) * ((Q_simple * S_0 ** 2) + 1 + (S_0 * (1.5 + (Q_simple * S_0 ** 2)) * 
-                                #np.sqrt(np.pi * Q_simple)) * (1 + sp.erf(S_0 * np.sqrt(Q_simple))) ** (Q_simple *S_0 ** 2))
-        term1 = 1 + self.Q_simple * self.S_0 ** 2
-        term2 = self.S_0 * (1.5 + self.Q_simple * self.S_0 ** 2)
-        term3 = np.sqrt(np.pi * self.Q_simple)
-        term4 = (1 + sp.erf(self.S_0 * np.sqrt(self.Q_simple))) * np.exp(self.Q_simple * self.S_0 ** 2)
-        M_simple = self.Q_simple ** 2 * (term1 + term2 * term3 * term4)
-        self.M_simple = M_simple
+        self.M_simple = get_M_factor(self.Q_simple, self.S_0)
 
         return
-    
+
     def set_N_simple(self):
         '''
-            Setter for simplified special factor N. This simplification is just the 
-            substitution of Q for Q'.
+            Setter for simplified special factor N [Cai & Wang 2012, Eq. 12]
+            with Q substituted by Q'. Stored scaled by exp(-S_0^2) for
+            overflow safety (see get_K_factor).
 
             Parameters
             ----------
@@ -659,14 +886,7 @@ class SimplifiedGasKinetics:
             -------
             None.
         '''
-        #N_simple = S_0 * (Q_simple ** 2) * (1.25 + (Q_simple * S_0 ** 2) / 2)
-        #N_simple += (0.5 * np.sqrt(np.pi * Q_simple ** 3)) * (0.75 + 3 * Q_simple * S_0 **2 + Q_simple ** 2 * S_0 ** 4) * (1 + sp.erf(S_0 * np.sqrt(Q_simple))) ** (Q_simple * S_0 ** 2)
-        term1 = self.S_0 * self.Q_simple ** 2 * (1.25 + self.Q_simple * self.S_0 ** 2 / 2)
-        term2 = 0.5 * np.sqrt(np.pi * self.Q_simple ** 3)
-        term3 = 0.75 + 3 * self.Q_simple * self.S_0 ** 2 + self.Q_simple ** 2 * self.S_0 ** 4
-        term4 = (1 + sp.erf(self.S_0 * np.sqrt(self.Q_simple))) * np.exp(self.Q_simple * self.S_0 ** 2)
-        N_simple = term1 + term2 * term3 * term4
-        self.N_simple = N_simple
+        self.N_simple = get_N_factor(self.Q_simple, self.S_0)
 
         return
     
@@ -684,10 +904,9 @@ class SimplifiedGasKinetics:
             float
                 number density at a point (X, 0, Z) vs number density at the nozzle exit
         '''
-        # num_density_ratio = n_1s(X, 0, Z) / n_0
+        # num_density_ratio = n_1s(X, 0, Z) / n_0 [Cai & Wang 2012, Eq. 14]
+        # K_simple already carries the exp(-S_0^2) prefactor (see set_K_simple)
         num_density_ratio = (self.K_simple / (2 * np.sqrt(np.pi)) * (self.R_0 / self.X) ** 2)
-        num_density_ratio *= np.exp(-(self.S_0 ** 2))
-        num_density_ratio = float(num_density_ratio)
         return num_density_ratio
     
     def get_U_normalized(self):
@@ -705,9 +924,8 @@ class SimplifiedGasKinetics:
             float
                 returns U normalized
         '''
-        # U_normalized = U_1s (X, 0, Z) * sqrt(beta)
+        # U_normalized = U_1s (X, 0, Z) * sqrt(beta) [Cai & Wang 2012, Eq. 15]
         U_normalized = self.M_simple / self.K_simple
-        U_normalized = float(U_normalized)
         return U_normalized
     
     def get_W_normalized(self):
@@ -725,9 +943,8 @@ class SimplifiedGasKinetics:
             float
                 returns W normalized
         '''
-        # W_normalized = W_1s (X, 0, Z) * sqrt(beta)
+        # W_normalized = W_1s (X, 0, Z) * sqrt(beta) [Cai & Wang 2012, Eq. 16]
         W_normalized = (self.M_simple / self.K_simple) * (self.Z / self.X)
-        W_normalized = float(W_normalized)
         return W_normalized
 
     def get_temp_ratio(self):
@@ -744,11 +961,9 @@ class SimplifiedGasKinetics:
             float
                 ratio of temperature at a point (X, 0, Z) to the temperature at the nozzle exit
         '''
-        # T_ratio = T_1s / T_0
+        # T_ratio = T_1s / T_0 [Cai & Wang 2012, Eq. 17]
         T_ratio = ((-2 * self.M_simple ** 2) / (3 * self.Q_simple * self.K_simple ** 2))
         T_ratio += (4 * self.N_simple / (3 * self.K_simple))
-        T_ratio = float(T_ratio)
-        #print(f'S0 = {S_0}, Qs = {Q_simple}, Ks = {K_simple}, Ms = {M_simple}, Ns = {N_simple}, T_ratio = {T_ratio}')
         return T_ratio
     
     def get_num_density_centerline(self):
@@ -766,10 +981,10 @@ class SimplifiedGasKinetics:
                 number density at a point on the centerline
                 vs the number density at the nozzle exit
         '''
-        p1 = self.X / np.sqrt(self.X ** 2 + self.R_0 ** 2) 
+        # n_1(X, 0, 0) / n_0 [Cai & Wang 2012, Eq. 18]
+        p1 = self.X / np.sqrt(self.X ** 2 + self.R_0 ** 2)
         p2 = self.R_0 / np.sqrt(self.X ** 2 + self.R_0 ** 2)
-        n_ratio = 0.5 + 0.5 * sp.erf(self.S_0) - (p1 * np.exp(-self.S_0 ** 2 * p2 ** 2) / 2) * (1 + sp.erf(p1 * self.S_0))
-        n_ratio = float(n_ratio)
+        n_ratio = 0.5 + 0.5 * erf(self.S_0) - (p1 * np.exp(-self.S_0 ** 2 * p2 ** 2) / 2) * (1 + erf(p1 * self.S_0))
 
         return n_ratio
     
@@ -791,17 +1006,24 @@ class SimplifiedGasKinetics:
                 velocity at a point on the centerline (X, 0, 0) normalized
                 with the parameter beta at the exit
         '''
-        p1 = self.X / np.sqrt(self.X ** 2 + self.R_0 ** 2) 
+        # U_1(X, 0, 0) * sqrt(beta_0) [Cai & Wang 2012, Eq. 19]
+        p1 = self.X / np.sqrt(self.X ** 2 + self.R_0 ** 2)
         p2 = self.R_0 / np.sqrt(self.X ** 2 + self.R_0 ** 2)
         n_ratio = self.get_num_density_centerline()
-        U_ratio = 1 / (2 * n_ratio) * ((p2 ** 2 * np.exp(- self.S_0 ** 2) / np.sqrt(np.pi)) + (self.S_0 * (1 + sp.erf(self.S_0))) - (np.exp(- p2 ** 2 * self.S_0 ** 2) * p1 ** 3 * self.S_0 * (1 + sp.erf(p1 * self.S_0))))
-        U_ratio = float(U_ratio)
+        U_ratio = 1 / (2 * n_ratio) * ((p2 ** 2 * np.exp(- self.S_0 ** 2) / np.sqrt(np.pi)) + (self.S_0 * (1 + erf(self.S_0))) - (np.exp(- p2 ** 2 * self.S_0 ** 2) * p1 ** 3 * self.S_0 * (1 + erf(p1 * self.S_0))))
         return U_ratio
     
     def get_temp_centerline(self):
         '''
             Method to calculate the temperature at a point (X, 0, 0) outside of the nozzle.
             This temperature is normalized over the temperature at the nozzle exit.
+
+            Evaluates Eq. 21's integral of N(Q(r)) * r over the exit
+            radius by numerical quadrature with the exact centerline
+            Q(r) = X^2/(X^2 + r^2) [Cai & Wang 2012, Eqs. 9, 21]. (An
+            earlier version treated N as constant across the exit,
+            integral = 0.5 * N(Q') * R_0^2, which is only valid in the
+            far field X >> R_0 where Q(r) ~ Q' = 1.)
 
             Parameters
             ----------
@@ -810,20 +1032,20 @@ class SimplifiedGasKinetics:
             Returns
             -------
             float
-                temperature on the point on the centerline (X, 0, 0) 
+                temperature on the point on the centerline (X, 0, 0)
                 vs temperature at the nozzle exit
         '''
+        # T_1(X, 0, 0) / T_0 [Cai & Wang 2012, Eq. 21]
+        # get_N_factor carries the exp(-S_0^2) prefactor of Eq. 21
         n_ratio = self.get_num_density_centerline()
         U1 = self.get_velocity_centerline()
-        '''
-        r = sp.symbols("r")
-        f = N * r
-        integral = sp.integrate(f, (r, 0, R_0))
-        temp_ratio = (4 * np.exp(- S_0 ** 2)) / (3 * n_ratio * np.sqrt(np.pi) * X ** 2) * integral.evalf() - (U1 ** 2 / (3/2)) 
-        '''
-        integral = 0.5 * self.N_simple * self.R_0 ** 2
-        temp_ratio = (4 * np.exp(- self.S_0 ** 2)) / (3 * n_ratio * np.sqrt(np.pi) * self.X ** 2) * integral - (U1 ** 2 / (3/2)) 
-        temp_ratio = float(temp_ratio)
+
+        def integrand(r):
+            Q = get_Q_full(r, 0.0, self.X, 0.0)
+            return get_N_factor(Q, self.S_0) * r
+
+        integral, _ = integrate.quad(integrand, 0, self.R_0)
+        temp_ratio = 4 / (3 * n_ratio * np.sqrt(np.pi) * self.X ** 2) * integral - (U1 ** 2 / (3/2))
         return temp_ratio
     
     def get_pressure(self):
@@ -946,191 +1168,307 @@ class SimplifiedGasKinetics:
 
             heat_flux = get_maxwellian_heat_transfer(rho_inf, S, self.sigma, self.theta, T, self.T_w, self.R, self.gamma)
         return heat_flux
-'''
-import math
-from scipy.special import legendre
 
-class CollisionlessPlume:
 
-    def __init__(self, U_0, R, T_0, n_iters, conv_tol):
-        self.n_iters = n_iters
-        self.conv_tol = conv_tol
-        self.U_0 = U_0
-        self.R = R
-        self.T_0 = T_0
-        self.S_0 = self.get_speed_ratio()
+class CollisionlessGasKinetics(SimplifiedGasKinetics):
+    '''
+        Full collisionless analytical plume model [Cai & Wang 2012,
+        Sec. II.A, Eqs. 5-12]: a free jet expanding from a round exit
+        into vacuum, evaluated at a point (X, 0, Z) in front of the
+        nozzle (X > 0). Unlike the parent SimplifiedGasKinetics (which
+        substitutes the far-field Q' of Eq. 13), this class integrates
+        the exact special factor Q of Eq. 9 -- via its closed form, see
+        get_Q_full -- over the finite exit disk, so it remains valid in
+        the near field.
+
+        The field solutions (Eqs. 5-8) are double integrals over
+        r in [0, R_0] and epsilon in [-pi/2, pi/2]. They are evaluated
+        with tensor-product Gauss-Legendre quadrature: the integrands
+        are analytic on the compact rectangle (the denominator of Q is
+        bounded below by X^2 > 0), so Gauss-Legendre converges
+        geometrically. The order is doubled (40 -> 80 -> 160) until two
+        successive orders agree to QUAD_RTOL; the finer result is kept.
+        In practice order 40 already reaches machine precision except
+        very near the nozzle lip (X -> 0, Z ~ R_0), where the density
+        field has a singularity [Cai & Wang 2012, Sec. III].
+
+        Centerline closed forms (Eqs. 18-21) and the Maxwell gas-surface
+        interface are inherited from SimplifiedGasKinetics; the exact
+        analytical solutions reduce to Eqs. 18-21 on the centerline, so
+        the inherited methods are exact there. The inherited surface
+        methods (get_pressure, get_shear_pressure, get_heat_flux)
+        dispatch to this class's overridden field getters, so they are
+        fed by the full-model n, U, W, T.
+
+        Attributes
+        ----------
+        (all of SimplifiedGasKinetics, plus)
+
+        I_K : float
+            integral of r * exp(-S_0^2) * K over the exit disk [Eq. 5]
+
+        I_M : float
+            integral of r * exp(-S_0^2) * M over the exit disk [Eq. 6]
+
+        I_W : float
+            integral of (Z - r sin(epsilon)) * r * exp(-S_0^2) * M over
+            the exit disk [Eq. 7]
+
+        I_N : float
+            integral of r * exp(-S_0^2) * N over the exit disk [Eq. 8]
+
+        Methods
+        -------
+        get_num_density_ratio()
+
+        get_U_normalized()
+
+        get_W_normalized()
+
+        get_Vr_normalized()
+
+        get_temp_ratio()
+
+        get_pressure_ratio()
+
+        (get_pressure / get_shear_pressure / get_heat_flux and the
+        centerline closed forms are inherited from SimplifiedGasKinetics)
+    '''
+
+    QUAD_ORDERS = (40, 80, 160)
+    QUAD_RTOL = 1e-9
+
+    def __init__(self, distance, theta, thruster_characteristics, T_w, sigma):
+        '''
+            Mirrors SimplifiedGasKinetics(distance, theta,
+            thruster_characteristics, T_w, sigma) exactly; X = d*cos(theta)
+            and Z = d*sin(theta) are derived internally. Additionally
+            precomputes the four field integrals of Eqs. 5-8.
+        '''
+        super().__init__(distance, theta, thruster_characteristics, T_w, sigma)
+        self.set_field_integrals()
+
         return
 
-    def get_speed_ratio(self):
-        S_0 = self.U_0 / np.sqrt(2 * self.R * self.T_0)
-        return S_0
+    def _compute_field_integrals(self, order):
+        '''
+            Evaluate the four exit-disk integrals of Eqs. 5-8 with a
+            tensor-product Gauss-Legendre rule of the given order per
+            axis, over r in [0, R_0] and epsilon in [-pi/2, pi/2].
 
-    #solves a summation series of legengre polynomials of the first kind
-    #from degree 0 to degree n or until the convergance tolerance, tol is met
-    #n: int, x: float (value to evaluate function over), tol: float
-    def get_Q(self, X, Z, r, epsilon):
-        
-        # TEST TODO TEST TODO TEST
+            The K, M, N factors carry the exp(-S_0^2) prefactor of the
+            field solutions (see get_K_factor), keeping every term
+            bounded for large speed ratios.
 
-        psi = np.arctan(Z/X)
-        leg_x = np.sin(psi) * np.sin(epsilon)
+            Parameters
+            ----------
+            order : int
+                number of Gauss-Legendre nodes per axis
 
-        sum = 0
-        
-        P_n_minus_2 = 1 #P_0 = 1
-        P_n_minus_1 = leg_x #P_1 = x
-        sum += P_n_minus_2 + (P_n_minus_1 * r / np.sqrt(X ** 2 + Z ** 2))
+            Returns
+            -------
+            tuple of float
+                (I_K, I_M, I_W, I_N)
+        '''
+        nodes, weights = np.polynomial.legendre.leggauss(order)
+        # map [-1, 1] to [0, R_0] (radial) and [-pi/2, pi/2] (angular)
+        r = 0.5 * self.R_0 * (nodes + 1)
+        w_r = 0.5 * self.R_0 * weights
+        eps = 0.5 * np.pi * nodes
+        w_eps = 0.5 * np.pi * weights
 
-        
-        for degree in range (2, self.n_iters + 1, 1):
-            
-            P_n = legendre(degree)(leg_x)
-            #print(f'degree: {degree}; x: {leg_x}; P_n: {P_n}')
-            sum += P_n
-            if abs(P_n) < self.conv_tol and degree % 2 == 0:
+        R, E = np.meshgrid(r, eps, indexing='ij')
+        W2D = np.outer(w_r, w_eps)
+
+        Q = get_Q_full(R, E, self.X, self.Z)
+        K = get_K_factor(Q, self.S_0)
+        M = get_M_factor(Q, self.S_0)
+        N = get_N_factor(Q, self.S_0)
+
+        I_K = np.sum(W2D * R * K)
+        I_M = np.sum(W2D * R * M)
+        I_W = np.sum(W2D * (self.Z - R * np.sin(E)) * R * M)
+        I_N = np.sum(W2D * R * N)
+        return I_K, I_M, I_W, I_N
+
+    def set_field_integrals(self):
+        '''
+            Setter for the field integrals I_K, I_M, I_W, I_N of
+            Eqs. 5-8, with quadrature-order doubling until two
+            successive orders agree to QUAD_RTOL (see class docstring
+            for the accuracy rationale). Warns if the finest order is
+            reached without convergence (only possible extremely close
+            to the nozzle-lip singularity).
+
+            Parameters
+            ----------
+            None.
+
+            Returns
+            -------
+            None.
+        '''
+        previous = None
+        for order in self.QUAD_ORDERS:
+            current = self._compute_field_integrals(order)
+            if previous is not None and self._integrals_converged(previous, current):
                 break
-            
-            #my recurrence legendre solver
-            #solve for polynomial of degree of current iter
-            
-            P_n = (2 * (degree - 1) + 1) * leg_x * (P_n_minus_1)
-            P_n -= (degree - 1) * P_n_minus_2
-            P_n /= degree
+            previous = current
+        else:
+            warnings.warn(
+                'CollisionlessGasKinetics quadrature did not converge to '
+                'rtol={} at order {} for point (X={}, Z={}); using finest '
+                'result.'.format(self.QUAD_RTOL, self.QUAD_ORDERS[-1],
+                                 self.X, self.Z),
+                RuntimeWarning)
 
-            sum += P_n * (r / np.sqrt(X ** 2 + Z ** 2)) ** degree
+        self.I_K, self.I_M, self.I_W, self.I_N = current
 
-            P_n_minus_2 = P_n_minus_1
-            P_n_minus_1 = P_n
+        return
 
-            if abs(P_n) < self.conv_tol:
-                break
-            
-        sum = 0.712
-        Q = (np.cos(psi) ** 2) * (sum ** 2)
+    def _integrals_converged(self, previous, current):
+        '''
+            Convergence test between two quadrature orders. I_K, I_M and
+            I_N are strictly positive, so a relative test applies; I_W
+            can legitimately vanish (centerline, Eq. 20), so its
+            difference is measured against the natural magnitude of its
+            integrand, (|Z| + R_0) * I_M.
 
-        return Q
-    
-    def get_K(self, X, Z, r, epsilon):
-        #K = Q * ((Q * S_0) + ((0.5 + (Q * S_0 ** 2)) * sqrt(pi * Q) * 
-                        #(1 + erf(S_0 * sqrt(Q))) ** (Q * S_0 ** 2)))
-        Q = self.get_Q(X, Z, r, epsilon)
-        term1 = Q * self.S_0
-        term2 = 0.5 + Q * self.S_0 ** 2
-        term3 = np.sqrt(np.pi * Q)
-        term4 = (1 + sp.erf(self.S_0 * np.sqrt(Q))) * np.exp(Q * self.S_0 ** 2)
-        K = Q * (term1 + term2 * term3 * term4)
-        return K
-    
-    def get_M(self, X, Z, r, epsilon):
-        #M = (Q ** 2) * ((Q * S_0 ** 2) + 1 + (S_0 * (1.5 + (Q * S_0 ** 2)) * 
-                        #sqrt(pi * Q_simple)) * (1 + erf(S_0 * sqrt(Q))) ** (Q *S_0 ** 2))
-        Q = self.get_Q(X, Z, r, epsilon)
-        term1 = Q * self.S_0 ** 2
-        term2 = 1 + self.S_0 * (1.5 + Q * self.S_0 ** 2)
-        term3 = np.sqrt(np.pi * Q)
-        term4 = (1 + sp.erf(self.S_0 * np.sqrt(Q))) * np.exp(Q * self.S_0 ** 2)
-        M = Q ** 2 * (term1 + term2 * term3 * term4)
-        return M
-    
-    def get_N(self, X, Z, r, epsilon):
-        #N = S_0 * (Q ** 2) * (1.25 + (Q * S_0 ** 2) / 2) + 
-        #(0.5 * sqrt(pi * Q ** 3)) * (0.75 + 3 * Q * S_0 **2 + Q ** 2 * S_0 ** 4) * 
-        #(1 + erf(S_0 * sqrt(Q))) ** (Q * S_0 ** 2)
-        Q = self.get_Q(X, Z, r, epsilon)
-        term1 = self.S_0 * Q ** 2 * (1.25 + Q * self.S_0 ** 2 / 2)
-        term2 = 0.5 * np.sqrt(np.pi * Q ** 3)
-        term3 = 0.75 + 3 * Q * self.S_0 ** 2 + Q ** 2 * self.S_0 ** 4
-        term4 = (1 + sp.erf(self.S_0 * np.sqrt(Q))) * np.exp(Q * self.S_0 ** 2)
-        N = term1 + term2 * term3 * term4
-        return N
+            Parameters
+            ----------
+            previous : tuple of float
+                integrals from the coarser rule
+            current : tuple of float
+                integrals from the finer rule
 
-    def get_num_density_ratio(self, X, Z, R_0):
-        n_ratio = np.exp(-self.S_0 ** 2) / (X ** 2 * np.pi ** (3/2))
-        n = 15
-        e_a, e_b = -np.pi, np.pi
-        e_h = (e_b - e_a) / n
+            Returns
+            -------
+            bool
+                True when every integral has converged to QUAD_RTOL
+        '''
+        rtol = self.QUAD_RTOL
+        I_K0, I_M0, I_W0, I_N0 = previous
+        I_K1, I_M1, I_W1, I_N1 = current
+        scale_W = (abs(self.Z) + self.R_0) * abs(I_M1)
+        return (abs(I_K1 - I_K0) <= rtol * abs(I_K1)
+                and abs(I_M1 - I_M0) <= rtol * abs(I_M1)
+                and abs(I_N1 - I_N0) <= rtol * abs(I_N1)
+                and abs(I_W1 - I_W0) <= rtol * scale_W)
 
-        e_vals = np.arange(e_a, e_b, e_h)
-        e_vals = np.append(e_vals, e_b)
-        dbl_integral = 0
+    def get_num_density_ratio(self):
+        '''
+            Number density at (X, 0, Z) normalized by the exit number
+            density, n_1/n_0 [Cai & Wang 2012, Eq. 5]. The exp(-S_0^2)
+            prefactor is carried inside I_K (see get_K_factor).
 
-        epsilon = e_a
-        for idx, epsilon in enumerate(e_vals):
-            if epsilon == e_a or idx == len(e_vals) - 1:
-                integral = self.get_integral(X, Z, R_0, epsilon)
-                dbl_integral += integral
-            elif ((epsilon / e_h) % 3 == 0):
-                integral = self.get_integral(X, Z, R_0, epsilon)
-                dbl_integral += 2 * integral
-            else:
-                integral = self.get_integral(X, Z, R_0, epsilon)
-                dbl_integral += 3 * integral
-        dbl_integral *= 3 * e_h / 8
-        n_ratio *= dbl_integral
-        print(f'S0: {self.S_0}; X: {X}; Z: {Z}; {n_ratio}')
-        return n_ratio
+            Parameters
+            ----------
+            None.
 
-    def get_integral(self, X, Z, R_0, epsilon):
-        
-        r_a, r_b = 0, R_0
-        n = 15
-        r_h = (r_b - r_a) / n
+            Returns
+            -------
+            float
+                n_1(X, 0, Z) / n_0
+        '''
+        return self.I_K / (np.pi ** 1.5 * self.X ** 2)
 
-        r_vals = np.arange(r_a, r_b, r_h)
-        r_vals = np.append(r_vals, r_b)
-        integral = 0
-        r = r_a
-        for idx, r in enumerate(r_vals):
-            if r == r_a or idx == len(r_vals) - 1:
-                integral += r * self.get_K(X, Z, r, epsilon)
-            elif ((r / r_h) % 3 == 0):
-                integral += 2 * r * self.get_K(X, Z, r, epsilon)
-            else:
-                integral += 3 * r * self.get_K(X, Z, r, epsilon)
-        integral *= (3 * r_h / 8)
+    def get_U_normalized(self):
+        '''
+            Macroscopic x-velocity at (X, 0, Z) normalized by
+            sqrt(beta_0), i.e. U_1 * sqrt(beta_0) [Cai & Wang 2012,
+            Eq. 6]. The shared prefactor and n_0/n_1 reduce the ratio to
+            I_M / I_K.
 
-        return integral
+            Parameters
+            ----------
+            None.
 
-import numpy as np
-import matplotlib.pyplot as plt
+            Returns
+            -------
+            float
+                U_1(X, 0, Z) * sqrt(beta_0)
+        '''
+        return self.I_M / self.I_K
 
-# Assuming you have an instance of CollisionlessPlume named plume
+    def get_W_normalized(self):
+        '''
+            Macroscopic z-velocity at (X, 0, Z) normalized by
+            sqrt(beta_0), i.e. W_1 * sqrt(beta_0) [Cai & Wang 2012,
+            Eq. 7]. Eq. 7's integrand factor is read as
+            (Z - r sin(epsilon)); the printed "(Z - r sin(theta))" is a
+            typo -- sin(epsilon) is the convention consistent with Q
+            (Eq. 9) and it makes W vanish on the centerline as Eq. 20
+            requires. Eq. 7's extra 1/X (prefactor 1/X^3 vs 1/X^2)
+            reduces the ratio to I_W / (X * I_K).
 
-# Define the range of X / (2 * R_0) values
-x_values = np.linspace(0.3, 10, 100)  # Adjust the range as needed
+            Parameters
+            ----------
+            None.
 
-# Values of S_0 to plot
-u0_values = [2]
-R_0 = 5
-# Create subplots
-plt.figure(figsize=(10, 6))
-plt.title('Normalized analytical number density along centerline')
-plt.xlabel('X / D')
-plt.ylabel('num_density_ratio')
+            Returns
+            -------
+            float
+                W_1(X, 0, Z) * sqrt(beta_0)
+        '''
+        return self.I_W / (self.X * self.I_K)
 
-# Plot for each S_0 value
-for u0 in u0_values:
-    num_density_ratios = []
-    plume = CollisionlessPlume(u0 * 15.15255, 0.287, 400, 999, 0.00001)
-    # Calculate num_density_ratio for each X / (2 * R_0)
-    for x_ratio in x_values:
-        X = x_ratio * 2 * R_0  # Calculate X from the ratio
-        Z = 0  # Fixed Z value
-        num_density_ratio = plume.get_num_density_ratio(X, Z, R_0)
-        num_density_ratios.append(num_density_ratio)
+    def get_Vr_normalized(self):
+        '''
+            Radial (spherical, from the nozzle exit center) velocity
+            component in the Y = 0 plane, normalized by sqrt(beta_0):
+            V_r = (X*U + Z*W)/sqrt(X^2 + Z^2) [Cai & Wang 2012,
+            Figs. 16-18].
 
-    # Plot the results
-    plt.plot(x_values, num_density_ratios, label=f'S_0 = {u0}')
+            Parameters
+            ----------
+            None.
 
-# Show legend
-plt.legend()
+            Returns
+            -------
+            float
+                V_r(X, 0, Z) * sqrt(beta_0)
+        '''
+        U = self.get_U_normalized()
+        W = self.get_W_normalized()
+        return (self.X * U + self.Z * W) / np.sqrt(self.X ** 2 + self.Z ** 2)
 
-# Show the plot
-plt.show()
+    def get_temp_ratio(self):
+        '''
+            Temperature at (X, 0, Z) normalized by the exit temperature,
+            T_1/T_0 [Cai & Wang 2012, Eq. 8]. With beta_0 = 1/(2*R*T_0),
+            the kinetic term -(U_1^2 + W_1^2)/(3*R*T_0) equals
+            -(2/3) * [(U_1 sqrt(beta_0))^2 + (W_1 sqrt(beta_0))^2].
 
-#test = CollisionlessPlume.get_num_density_ratio()
-    #def get_U_normalized():
-    #def get_W_normalized():
-    #def get_temp_ratio():
+            Parameters
+            ----------
+            None.
 
-'''
+            Returns
+            -------
+            float
+                T_1(X, 0, Z) / T_0
+        '''
+        U = self.get_U_normalized()
+        W = self.get_W_normalized()
+        return -(2 / 3) * (U ** 2 + W ** 2) + (4 / 3) * self.I_N / self.I_K
+
+    def get_pressure_ratio(self):
+        '''
+            Flowfield static pressure at (X, 0, Z) normalized by the exit
+            static pressure: p_1/p_0 = (n_1/n_0) * (T_1/T_0) from the
+            ideal gas law with the LOCAL temperature. Cai & Wang 2012
+            (p. 64, Fig. 13 discussion) explicitly warn that computing
+            the local pressure as n(X, 0, Z) * k * T_0 is theoretically
+            invalid, because the flowfield temperature is always lower
+            than the exit temperature T_0.
+
+            Parameters
+            ----------
+            None.
+
+            Returns
+            -------
+            float
+                p_1(X, 0, Z) / p_0
+        '''
+        return self.get_num_density_ratio() * self.get_temp_ratio()
