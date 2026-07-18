@@ -1018,6 +1018,13 @@ class SimplifiedGasKinetics:
             Method to calculate the temperature at a point (X, 0, 0) outside of the nozzle.
             This temperature is normalized over the temperature at the nozzle exit.
 
+            Evaluates Eq. 21's integral of N(Q(r)) * r over the exit
+            radius by numerical quadrature with the exact centerline
+            Q(r) = X^2/(X^2 + r^2) [Cai & Wang 2012, Eqs. 9, 21]. (An
+            earlier version treated N as constant across the exit,
+            integral = 0.5 * N(Q') * R_0^2, which is only valid in the
+            far field X >> R_0 where Q(r) ~ Q' = 1.)
+
             Parameters
             ----------
             None.
@@ -1025,14 +1032,19 @@ class SimplifiedGasKinetics:
             Returns
             -------
             float
-                temperature on the point on the centerline (X, 0, 0) 
+                temperature on the point on the centerline (X, 0, 0)
                 vs temperature at the nozzle exit
         '''
         # T_1(X, 0, 0) / T_0 [Cai & Wang 2012, Eq. 21]
-        # N_simple already carries the exp(-S_0^2) prefactor (see set_N_simple)
+        # get_N_factor carries the exp(-S_0^2) prefactor of Eq. 21
         n_ratio = self.get_num_density_centerline()
         U1 = self.get_velocity_centerline()
-        integral = 0.5 * self.N_simple * self.R_0 ** 2
+
+        def integrand(r):
+            Q = get_Q_full(r, 0.0, self.X, 0.0)
+            return get_N_factor(Q, self.S_0) * r
+
+        integral, _ = integrate.quad(integrand, 0, self.R_0)
         temp_ratio = 4 / (3 * n_ratio * np.sqrt(np.pi) * self.X ** 2) * integral - (U1 ** 2 / (3/2))
         return temp_ratio
     

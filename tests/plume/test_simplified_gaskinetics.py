@@ -153,6 +153,44 @@ def test_centerline_temperature_approaches_asymptote(S_0):
     assert plume.get_temp_centerline() == pytest.approx(T_inf, rel=1e-4)
 
 
+def old_temp_centerline_approximation(plume):
+    """The pre-fix Eq. 21 evaluation: N treated as constant across the
+    exit radius, integral ~ 0.5 * N(Q'=1) * R_0^2 (N_simple carries the
+    exp(-S_0^2) prefactor)."""
+    integral = 0.5 * plume.N_simple * plume.R_0 ** 2
+    return (4 / (3 * plume.get_num_density_centerline() * np.sqrt(np.pi)
+                 * plume.X ** 2) * integral
+            - plume.get_velocity_centerline() ** 2 / 1.5)
+
+
+def test_temp_centerline_quadrature_matches_old_in_far_field():
+    """(a) Far field: with X >> R_0, Q(r) = X^2/(X^2+r^2) ~ 1 across the
+    whole exit, so the exact quadrature and the constant-N approximation
+    must agree. Measured relative difference at X/R_0 = 1000 is ~5e-5
+    (it scales as (R_0/X)^2 amplified by the -2/3 U^2 cancellation, see
+    the asymptote test above); rel=1e-3 gives ~20x margin."""
+    X = 1000 * (D_NOZZLE / 2)
+    plume = make_plume(X, 0.0, 2.0)
+    assert plume.get_temp_centerline() == pytest.approx(
+        old_temp_centerline_approximation(plume), rel=1e-3)
+
+
+def test_temp_centerline_quadrature_diverges_from_old_in_near_field():
+    """(b) Near field: at X = 2*R_0 the exact Q(r) varies strongly over
+    the exit (Q(R_0) = 0.8), and the old approximation errs by ~87%,
+    yielding an unphysical T > T_0 (collisionless expansion can only
+    cool the gas below the exit temperature -- paper Fig. 13 argument).
+    Require a divergence of at least 50% to prove the fix changes the
+    near field meaningfully."""
+    X = 2 * (D_NOZZLE / 2)
+    plume = make_plume(X, 0.0, 2.0)
+    T_new = plume.get_temp_centerline()
+    T_old = old_temp_centerline_approximation(plume)
+    assert abs(T_new / T_old - 1) > 0.5
+    assert T_new < 1.0
+    assert T_old > 1.0
+
+
 @pytest.mark.parametrize("point,expected", [
     ((1.0, 0.2, 2.0), (0.36855461276327334, -0.056815859301478394,
                        143.3923778236429)),
