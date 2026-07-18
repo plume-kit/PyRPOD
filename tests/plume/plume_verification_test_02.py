@@ -1,5 +1,5 @@
 # ========================
-# PyRPOD: tests/plume/test_simplified_gaskinetics.py
+# PyRPOD: tests/plume/plume_verification_test_02.py
 # ========================
 # Pinning tests for the SimplifiedGasKinetics class (Cai & Wang 2012,
 # "Numerical Validations for a Set of Collisionless Rocket Plume Solutions",
@@ -21,7 +21,7 @@ from pyrpod.plume.RarefiedPlumeGasKinetics import (
     get_far_field_velocity_normalized,
 )
 
-pytestmark = pytest.mark.plume
+pytestmark = [pytest.mark.plume, pytest.mark.verification]
 
 # Fixed thruster gas properties used for all cases (argon-like).
 R_SPECIFIC = 208.13   # J / (kg K)

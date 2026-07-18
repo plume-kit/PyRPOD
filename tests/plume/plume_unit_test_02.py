@@ -1,5 +1,5 @@
 # ========================
-# PyRPOD: tests/plume/test_q_closed_form.py
+# PyRPOD: tests/plume/plume_unit_test_02.py
 # ========================
 # Verifies the closed form of the special factor Q (Cai & Wang 2012,
 # Eq. 9) against a direct truncation of the printed Legendre series.
@@ -17,7 +17,7 @@ from scipy.special import eval_legendre
 
 from pyrpod.plume.RarefiedPlumeGasKinetics import get_Q_full
 
-pytestmark = pytest.mark.plume
+pytestmark = [pytest.mark.plume, pytest.mark.unit]
 
 N_TERMS = 50
 

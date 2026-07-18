@@ -1,5 +1,5 @@
 # ========================
-# PyRPOD: tests/plume/test_simons.py
+# PyRPOD: tests/plume/plume_unit_test_03.py
 # ========================
 # Tests for the Simons cosine-law plume model (Cai & Wang 2012, Sec. II.C,
 # Eqs. 25-26) after the gamma-generalization fixes:
@@ -13,7 +13,7 @@ import pytest
 
 from pyrpod.plume.RarefiedPlumeGasKinetics import Simons
 
-pytestmark = pytest.mark.plume
+pytestmark = [pytest.mark.plume, pytest.mark.unit]
 
 R_SPECIFIC = 287.0  # J / (kg K)
 T_C = 500.0         # K

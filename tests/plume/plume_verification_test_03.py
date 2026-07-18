@@ -1,5 +1,5 @@
 # ========================
-# PyRPOD: tests/plume/test_collisionless_gaskinetics.py
+# PyRPOD: tests/plume/plume_verification_test_03.py
 # ========================
 # Verification tests for the full collisionless analytical plume model
 # CollisionlessGasKinetics (Cai & Wang 2012, Eqs. 5-12), checked against
@@ -23,7 +23,7 @@ from pyrpod.plume.RarefiedPlumeGasKinetics import (
     get_far_field_velocity_normalized,
 )
 
-pytestmark = pytest.mark.plume
+pytestmark = [pytest.mark.plume, pytest.mark.verification]
 
 R_SPECIFIC = 208.13   # J / (kg K), argon-like
 T_0 = 500.0           # K
@@ -140,7 +140,7 @@ def test_temperature_below_exit_temperature_downstream(distance, theta):
 def test_centerline_converges_to_far_field_asymptotes(S_0):
     """(f) Full-model centerline U and T converge to the Eq. 22-24
     asymptotes at large X. Tolerances follow the O((R_0/X)^2)
-    convergence-rate arguments in test_simplified_gaskinetics.py
+    convergence-rate arguments in plume_verification_test_02.py
     (rel=1e-5 for U at X/R_0 = 1000; rel=1e-4 for T at X/R_0 = 5000
     due to the -2/3 U^2 cancellation amplification)."""
     plume_U = make_plume(CollisionlessGasKinetics, 1000 * R_0, 0.0, S_0)
