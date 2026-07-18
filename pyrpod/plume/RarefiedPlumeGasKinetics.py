@@ -283,7 +283,7 @@ class Simons:
         Number density from continuity equation with constant mass flux across different spherical surfaces.
         Return the ratio of number density at an analyzed point outside of the exit vs at the exit.
     '''
-    def __init__(self, gamma, R, T_c, P_c, R_0, r):
+    def __init__(self, gamma, R, T_c, P_c, R_0, r, kappa=None):
         '''
             Simple constructor, saves parameters to self.
 
@@ -300,8 +300,15 @@ class Simons:
             R_0 : float
                     nozzle exit radius (m)
             r : float
-                    distance from the evaluated point 
+                    distance from the evaluated point
                     to the nozzle exit center (m)
+            kappa : float, optional
+                    plume beaming exponent for the cosine-law decay
+                    function [Cai & Wang 2012, Eq. 26]. Defaults to
+                    Boyton's kappa = 2/(gamma - 1) [Cai & Wang 2012,
+                    Sec. II.C, refs. 22-23]. Paper-cited alternatives:
+                    kappa = 2 (Ashkenas & Sherman, ref. 20) and
+                    kappa = 1/(gamma - 1) (Albini, ref. 21).
 
             Returns
             -------
@@ -314,12 +321,11 @@ class Simons:
         self.P_c = P_c
         self.r = r
         self.R_0 = R_0
+        if kappa is None:
+            kappa = 2 / (gamma - 1) #Boyton 1967/68 from Cai2012 [22][23]
+        self.kappa = kappa
 
         self.set_normalization_constant()
-        #self.rho_throat = self.get_nozzle_throat_density()
-        #self.theta_max = self.get_limiting_turn_angle()
-        #self.A = self.get_normalization_constant()
-        #self.U_t = self.get_limiting_velocity()
 
     def get_nozzle_throat_density(self):
         '''
@@ -336,8 +342,10 @@ class Simons:
         '''
         #ideal gas law P_throat = rho_throat * R * T_throat
         #therefore: rho_throat = P_throat / (R * T_throat)
-        P_throat = self.P_c * 0.5283 #from Isentropic Flow Tables @ M = 1
-        T_throat = self.T_c * 0.8333 #from Isentropic Flow Tables @ M = 1
+        #isentropic ratios at M = 1: T*/T_c = 2/(gamma+1),
+        #P*/P_c = (2/(gamma+1))^(gamma/(gamma-1))
+        T_throat = self.T_c * (2 / (self.gamma + 1))
+        P_throat = self.P_c * (2 / (self.gamma + 1)) ** (self.gamma / (self.gamma - 1))
         rho_throat = P_throat / (self.R * T_throat)
         return rho_throat
 
@@ -358,22 +366,30 @@ class Simons:
 
     def get_plume_angular_density_decay_function(self, theta):
         '''
-            From Cai 2012. Solve for the density decay function at a given off-centerline angle.
-            Expression for kappa is chosen from Boyton 1967/68.
+            Solve for the density decay function at a given off-centerline
+            angle [Cai & Wang 2012, Eq. 26], f(theta) =
+            cos^kappa(pi*theta/(2*theta_max)) with the beaming exponent
+            kappa chosen at construction (default Boyton 2/(gamma-1)).
+
+            For theta >= theta_max the plume model region is empty (the
+            gas cannot turn past the limiting angle), so the decay
+            function is 0. Without this guard the cosine goes negative
+            and fractional kappa would produce complex numbers.
 
             Parameters
             ----------
             theta : float
                     plume centerline off-angle of current position (rad)
-            
+
             Returns
             -------
             float
                 evaluation of plume angular density decay function at theta
         '''
-        kappa = 2 / (self.gamma - 1) #Boyton 1967/68 from Cai2012 [22][23]
         theta_max = self.get_limiting_turn_angle()
-        f = (np.cos((np.pi / 2) * (theta / theta_max))) ** kappa
+        if theta >= theta_max:
+            return 0.0
+        f = (np.cos((np.pi / 2) * (theta / theta_max))) ** self.kappa
         return f
 
     def set_normalization_constant(self):
@@ -393,7 +409,7 @@ class Simons:
             None.
         '''
         theta_max = self.get_limiting_turn_angle()
-        kappa = 2 / (self.gamma - 1)
+        kappa = self.kappa
 
         def integrand(theta):
             return np.sin(theta) * np.cos((np.pi / 2) * (theta / theta_max)) ** kappa
@@ -416,7 +432,7 @@ class Simons:
             float
                 sonic velocity (m/s)
         '''
-        T_throat = self.T_c * 0.8333 #from Isentropic Flow Tables @ Mach = 1
+        T_throat = self.T_c * (2 / (self.gamma + 1)) #isentropic ratio at M = 1
         sonic_velocity = np.sqrt(self.gamma * self.R * T_throat)
         return sonic_velocity
 
@@ -450,24 +466,67 @@ class Simons:
 
     def get_num_density_ratio(self, theta):
         '''
-            Number density from continuity equation with constant mass flux across different spherical surfaces.
-            Return the ratio of number density at an analyzed point outside of the exit vs at the exit.
+            Number density from continuity equation with constant mass flux
+            across different spherical surfaces [Cai & Wang 2012, Eq. 25].
+
+            NOTE: this ratio is THROAT-referenced, n/n_s: the returned
+            value normalizes by the number density at the nozzle throat
+            (rho_s in the paper), not at the nozzle exit. For a ratio
+            comparable to the gas-kinetic classes (which normalize by the
+            exit density n_0), use get_num_density_ratio_exit.
+
+            Returns 0.0 for theta >= theta_max (empty plume region).
 
             Parameters
             ----------
             theta : float
                     Angle off centerline of the current point being analyzed (rad).
-            
+
             Returns
             -------
             float
-                the ratio of number density at an analyzed point outside of the exit vs at the exit
+                number density at the analyzed point normalized by the
+                nozzle THROAT number density, n/n_s
         '''
+        theta_max = self.get_limiting_turn_angle()
+        if theta >= theta_max:
+            return 0.0
         f = self.get_plume_angular_density_decay_function(theta)
-        #??? make own function for rho_ratio???
         rho_ratio = self.A * ((self.R_0/self.r) ** 2) * f #rho_ratio = density / nozzle throat denisty aka rho / rho_s
         n_ratio = rho_ratio
         return n_ratio
+
+    def get_num_density_ratio_exit(self, theta, exit_mach):
+        '''
+            Exit-referenced number density ratio n/n_0.
+
+            Rescales the throat-referenced Eq. 25 result by the isentropic
+            density ratio between the throat (M = 1) and the nozzle exit
+            (M = exit_mach):
+
+                n_s / n_0 = [(1 + (gamma-1)/2 * M_e^2) / ((gamma+1)/2)]^(1/(gamma-1))
+
+            This makes the Simons model directly comparable to the
+            gas-kinetic classes (SimplifiedGasKinetics,
+            CollisionlessGasKinetics), which normalize by the exit
+            number density n_0.
+
+            Parameters
+            ----------
+            theta : float
+                    Angle off centerline of the current point being analyzed (rad).
+            exit_mach : float
+                    Mach number at the nozzle exit plane.
+
+            Returns
+            -------
+            float
+                number density at the analyzed point normalized by the
+                nozzle EXIT number density, n/n_0
+        '''
+        throat_to_exit = ((1 + (self.gamma - 1) / 2 * exit_mach ** 2)
+                          / ((self.gamma + 1) / 2)) ** (1 / (self.gamma - 1))
+        return self.get_num_density_ratio(theta) * throat_to_exit
 
 # TODO save plume constants into self
 class SimplifiedGasKinetics:
