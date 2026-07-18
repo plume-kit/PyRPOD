@@ -54,23 +54,17 @@ def build_rows():
     rows.append(_row('centerline', 'density', 'Simons vs analytical',
                      n_simons, n_analytical, core, 'X/D >= 1'))
 
-    # angular curve r/D = 10
+    # angular curve r/D = 10 (simplified series delegates to
+    # SimplifiedGasKinetics via plume_figure_utils)
     theta = np.deg2rad(np.linspace(0.0, u.THETA_MAX_DEG, 90))
     X = 10.0 * u.D_NOZZLE * np.cos(theta)
     Z = 10.0 * u.D_NOZZLE * np.sin(theta)
     nA = u.full_field_values('n', X, Z, S_0)
-    Q = X ** 2 / (X ** 2 + Z ** 2)
-    nS = u.get_K_factor(Q, S_0) / (2 * np.sqrt(np.pi)) * (u.R_0 / X) ** 2
+    nS = u.simplified_field_values('n', X, Z, S_0)
     nSim = u.simons_density_field(X, Z, S_0)
-    VrA = u.full_field_values('Vr', X, Z, S_0)
-    fluxA = nA * VrA
-    UA = u.full_field_values('U', X, Z, S_0)
-    WA = u.full_field_values('W', X, Z, S_0)
-    # simplified-model flux with the same Fig. 25 normalization
-    US = u.get_M_factor(Q, S_0) / u.get_K_factor(Q, S_0)
-    WS = US * Z / X
-    VrS = (X * US + Z * WS) / np.sqrt(X ** 2 + Z ** 2)
-    fluxS = nS * VrS
+    # mass flux with the same Fig. 25 normalization, n * Vr*sqrt(beta0)
+    fluxA = nA * u.full_field_values('Vr', X, Z, S_0)
+    fluxS = nS * u.simplified_field_values('Vr', X, Z, S_0)
     core = theta <= np.deg2rad(60.0)
     rows.append(_row('angular r/D=10', 'density', 'simplified vs analytical',
                      nS, nA, core, 'theta <= 60 deg'))

@@ -14,12 +14,17 @@
 #   T_0 and n_0 values are inert; the ones below match the existing
 #   verification tests. ve is set from the exit speed ratio,
 #   ve = S_0 * sqrt(2*R*T_0).
-# * Full-model contour fields are evaluated with a vectorized
-#   Gauss-Legendre quadrature (fixed order 80 per axis, the same order
-#   at which CollisionlessGasKinetics converges to 1e-9). Every call
-#   cross-checks a few sample points against the class and raises if
-#   they disagree beyond 1e-6, so the vectorized path cannot silently
-#   diverge from the physics module.
+# * Single-source-of-truth policy: the simplified and Simons overlays
+#   delegate point-by-point to SimplifiedGasKinetics / Simons (they are
+#   closed-form and cheap), so any model change is reflected in the
+#   figures automatically. Only the FULL model keeps a vectorized
+#   re-implementation of its Eq. 5-8 quadrature here (per-point class
+#   instantiation would cost hours per contour sweep instead of
+#   seconds); as a guard, every call cross-checks sample points against
+#   CollisionlessGasKinetics and raises if they disagree beyond 1e-6,
+#   so that path cannot silently diverge from the physics module
+#   either -- a model change makes the figure scripts fail loudly
+#   until this file is updated to match.
 # * The models require X > 0; grids start at X_MIN_OVER_D and angular
 #   sweeps stop at THETA_MAX_DEG < 90 deg.
 # * Digitized-data convention (see tests/plume/data/digitized/README.md):
@@ -103,13 +108,6 @@ def exit_mach(S_0):
     return S_0 * np.sqrt(2.0 / GAMMA)
 
 
-def throat_to_exit_density_ratio(S_0):
-    """n_s/n_0 used by Simons exit referencing [module docstring note]."""
-    Me = exit_mach(S_0)
-    return ((1 + (GAMMA - 1) / 2 * Me ** 2)
-            / ((GAMMA + 1) / 2)) ** (1 / (GAMMA - 1))
-
-
 def make_simons(distance, S_0, kappa=None):
     """Simons instance with chamber conditions isentropically consistent
     with the exit state at Me(S_0). T_c/P_c only rescale absolute
@@ -122,27 +120,35 @@ def make_simons(distance, S_0, kappa=None):
 
 
 def simons_density_field(X, Z, S_0, kappa_f=None):
-    """Exit-referenced Simons density n/n_0 at points (X, 0, Z) [m].
+    """Exit-referenced Simons density n/n_0 at points (X, 0, Z) [m],
+    delegated point-by-point to Simons.get_num_density_ratio_exit so
+    that any change to the Simons model is reflected here.
 
-    A is always the Boyton-kappa normalization constant (paper p. 65:
-    the cosine-law curves coincide at theta = 0 for all kappa); kappa_f
-    optionally varies the plotted decay exponent f = cos^kappa_f
-    (Figs. 22-24). Vectorized; theta >= theta_max gives 0.
+    Following the paper (p. 65: the cosine-law curves coincide at
+    theta = 0 for every kappa), the normalization constant A is always
+    the Boyton-kappa value; kappa_f optionally varies only the plotted
+    decay exponent f = cos^kappa_f (Figs. 22-24), implemented by
+    overriding A on a kappa_f-built instance with the Boyton value.
+    A single instance is reused with its evaluation radius updated per
+    point (reconstructing would re-run the A quadrature 10^4 times).
     """
     X = np.asarray(X, dtype=float)
     Z = np.asarray(Z, dtype=float)
-    boyton = make_simons(1.0, S_0)          # A from default Boyton kappa
-    theta_max = boyton.get_limiting_turn_angle()
-    kappa = boyton.kappa if kappa_f is None else kappa_f
+    shape = np.broadcast(X, Z).shape
+    Xf = np.broadcast_to(X, shape).ravel()
+    Zf = np.broadcast_to(Z, shape).ravel()
 
-    r_sph = np.sqrt(X ** 2 + Z ** 2)
-    theta = np.arctan2(np.abs(Z), X)
-    f = np.where(theta < theta_max,
-                 np.cos((np.pi / 2) * (np.minimum(theta, theta_max)
-                                       / theta_max)) ** kappa,
-                 0.0)
-    n_over_ns = boyton.A * (R_0 / r_sph) ** 2 * f
-    return n_over_ns * throat_to_exit_density_ratio(S_0)
+    simons = make_simons(1.0, S_0, kappa=kappa_f)
+    if kappa_f is not None:
+        simons.A = make_simons(1.0, S_0).A  # paper's shared Boyton A
+    Me = exit_mach(S_0)
+
+    out = np.empty(Xf.size)
+    for i in range(Xf.size):
+        simons.r = float(np.hypot(Xf[i], Zf[i]))
+        theta = float(np.arctan2(np.abs(Zf[i]), Xf[i]))
+        out[i] = simons.get_num_density_ratio_exit(theta, Me)
+    return out.reshape(shape)
 
 
 # ---------------------------------------------------------------------------
@@ -163,10 +169,40 @@ def centerline_profiles(x_over_D, S_0, quantities=('n',)):
     return out
 
 
-def simplified_centerline_density(x_over_D, S_0):
-    """Simplified-model centerline density, Eq. 14 with Q' = 1."""
-    X = np.asarray(x_over_D) * D_NOZZLE
-    return get_K_factor(1.0, S_0) / (2 * np.sqrt(np.pi)) * (R_0 / X) ** 2
+# ---------------------------------------------------------------------------
+# simplified-model field evaluation (delegated to SimplifiedGasKinetics)
+# ---------------------------------------------------------------------------
+
+def simplified_field_values(quantity, X, Z, S_0):
+    """Simplified-model quantity at 1-D point arrays X, Z [m],
+    delegated point-by-point to SimplifiedGasKinetics (Eqs. 13-17) so
+    that any change to the simplified model is reflected here. The
+    class is closed-form, so the per-point loop costs well under a
+    second even on full contour grids.
+
+    quantity: 'n', 'U', 'W', 'T', plus the derived compositions
+    'Vr' = (X*U + Z*W)/sqrt(X^2+Z^2) and 'p' = n*T (the class exposes
+    no methods for those).
+    """
+    getters = {'n': 'get_num_density_ratio', 'U': 'get_U_normalized',
+               'W': 'get_W_normalized', 'T': 'get_temp_ratio'}
+    if quantity not in getters and quantity not in ('Vr', 'p'):
+        raise KeyError(quantity)
+    X = np.asarray(X, dtype=float).ravel()
+    Z = np.asarray(Z, dtype=float).ravel()
+    out = np.empty(X.size)
+    for i in range(X.size):
+        d = float(np.hypot(X[i], Z[i]))
+        theta = float(np.arctan2(Z[i], X[i]))
+        plume = make_plume(SimplifiedGasKinetics, d, theta, S_0)
+        if quantity in getters:
+            out[i] = getattr(plume, getters[quantity])()
+        elif quantity == 'Vr':
+            out[i] = (X[i] * plume.get_U_normalized()
+                      + Z[i] * plume.get_W_normalized()) / d
+        else:  # 'p'
+            out[i] = plume.get_num_density_ratio() * plume.get_temp_ratio()
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -201,7 +237,7 @@ def full_field_values(quantity, X, Z, S_0, _chunk=256):
         sl = slice(start, min(start + _chunk, n_pts))
         Xc = X[sl][:, None, None]
         Zc = Z[sl][:, None, None]
-        Q = Xc ** 2 / (Xc ** 2 + Zc ** 2 - 2 * Zc * Rn * sinE + Rn ** 2)
+        Q = get_Q_full(Rn, En, Xc, Zc)
         K = get_K_factor(Q, S_0)
         M = get_M_factor(Q, S_0)
         N = get_N_factor(Q, S_0)
@@ -222,17 +258,26 @@ def full_field_values(quantity, X, Z, S_0, _chunk=256):
 
 
 def _verify_against_class(values, X, Z, S_0, rtol=1e-6):
-    """Cross-check sample points against CollisionlessGasKinetics."""
+    """Cross-check sample points against CollisionlessGasKinetics.
+
+    W legitimately vanishes on the centerline, so its deviation is
+    measured against the natural velocity scale max(|W|, |U|) instead
+    of a purely relative test.
+    """
     for idx in {0, X.size // 2, X.size - 1}:
         d = float(np.hypot(X[idx], Z[idx]))
         th = float(np.arctan2(Z[idx], X[idx]))
         ref = make_plume(CollisionlessGasKinetics, d, th, S_0)
-        checks = {'n': ref.get_num_density_ratio(),
-                  'U': ref.get_U_normalized(),
-                  'T': ref.get_temp_ratio()}
-        for q, expected in checks.items():
+        U_ref = ref.get_U_normalized()
+        W_ref = ref.get_W_normalized()
+        checks = {'n': (ref.get_num_density_ratio(), None),
+                  'U': (U_ref, None),
+                  'W': (W_ref, max(abs(W_ref), abs(U_ref))),
+                  'T': (ref.get_temp_ratio(), None)}
+        for q, (expected, scale) in checks.items():
+            scale = abs(expected) if scale is None else scale
             got = values[q][idx]
-            if abs(got - expected) > rtol * abs(expected):
+            if abs(got - expected) > rtol * scale:
                 raise AssertionError(
                     f'vectorized field {q} diverged from '
                     f'CollisionlessGasKinetics at (X={X[idx]}, Z={Z[idx]}): '
@@ -249,21 +294,13 @@ def full_field_grid(quantity, x_over_D, z_over_D, S_0):
 
 
 def simplified_field_grid(quantity, x_over_D, z_over_D, S_0):
-    """Simplified-model quantity (Eqs. 13-17) on the tensor grid."""
+    """Simplified-model quantity on the tensor grid (delegates to
+    simplified_field_values); returns shape
+    (len(z_over_D), len(x_over_D)) for use with plt.contour."""
     Xg, Zg = np.meshgrid(np.asarray(x_over_D) * D_NOZZLE,
                          np.asarray(z_over_D) * D_NOZZLE)
-    Q = Xg ** 2 / (Xg ** 2 + Zg ** 2)
-    K = get_K_factor(Q, S_0)
-    M = get_M_factor(Q, S_0)
-    N = get_N_factor(Q, S_0)
-    n = K / (2 * np.sqrt(np.pi)) * (R_0 / Xg) ** 2
-    U = M / K
-    W = U * Zg / Xg
-    T = -2 * M ** 2 / (3 * Q * K ** 2) + 4 * N / (3 * K)
-    values = {'n': n, 'U': U, 'W': W, 'T': T,
-              'Vr': (Xg * U + Zg * W) / np.sqrt(Xg ** 2 + Zg ** 2),
-              'p': n * T}
-    return values[quantity]
+    vals = simplified_field_values(quantity, Xg.ravel(), Zg.ravel(), S_0)
+    return vals.reshape(Xg.shape)
 
 
 def default_contour_axes(x_max=10.0, z_max=10.0):
@@ -490,9 +527,7 @@ def angular_density_profile_figure(kn_label, fig_stem):
     X = r * np.cos(theta)
     Z = r * np.sin(theta)
     analytical = full_field_values('n', X, Z, S_0)
-    Q = X ** 2 / (X ** 2 + Z ** 2)
-    simplified = (get_K_factor(Q, S_0) / (2 * np.sqrt(np.pi))
-                  * (R_0 / X) ** 2)
+    simplified = simplified_field_values('n', X, Z, S_0)
     theta_deg = np.rad2deg(theta)
 
     fig, ax = plt.subplots(figsize=(6, 4.5))
