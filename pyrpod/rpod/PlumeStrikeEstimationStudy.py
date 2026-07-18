@@ -27,7 +27,10 @@ from pyrpod.rpod.approach_maneuvers import (
 )
 from pyrpod.rpod.io import ensure_results_dirs, write_jfh
 from pyrpod.rpod.PlumeStudyExport import PlumeStudyExport
-from pyrpod.plume.PlumeStrikeCalculator import compute_plume_strikes
+from pyrpod.plume.PlumeStrikeCalculator import (
+    compute_face_centroids,
+    compute_plume_strikes,
+)
 
 logger = get_logger("pyrpod.rpod.PlumeStrikeEstimationStudy")
 
@@ -772,6 +775,9 @@ class PlumeStrikeEstimationStudy (MissionPlanner):
         self.create_results_dir()
         target = self.target.mesh
         target_normals = target.get_unit_normals()
+        # The target is stationary for the whole run, so face centroids are
+        # computed once here and reused for every firing.
+        target_centroids = compute_face_centroids(target.vectors)
 
         # Initialize cumulative arrays
         kinetics_on = self.environment.config['pm']['kinetics'] != 'None'
@@ -797,6 +803,7 @@ class PlumeStrikeEstimationStudy (MissionPlanner):
                 vv=self.vv,
                 jfh_step=step,
                 environment=self.environment,
+                face_centroids=target_centroids,
             )
 
             strikes = result["strikes"]
