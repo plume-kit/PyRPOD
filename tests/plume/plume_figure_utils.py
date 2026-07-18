@@ -441,14 +441,18 @@ def top_bottom_contour_figure(quantity, levels, kn_label, fig_stem,
 
 
 def centerline_density_profile_figure(kn_label, fig_stem):
-    """Figs. 19-21: centerline density -- analytical (Eq. 18, circles),
-    simplified (Eq. 14, triangles), Simons (solid line, exit-referenced),
-    DSMC digitized slot."""
+    """Figs. 19-21: centerline density -- analytical (Eq. 5 integral,
+    circles), simplified (the Eq. 18 closed form from the paper's
+    simplified-solutions section II.B, triangles), Simons (solid line,
+    exit-referenced), DSMC digitized slot. As in the paper, the
+    analytical and simplified series coincide on the centerline (the
+    Eq. 5 integral reduces exactly to Eq. 18) and converge to 1 at
+    X = 0."""
     S_0 = 2.0
     x_over_D = np.linspace(X_MIN_OVER_D, 10.0, 200)
-    analytical = centerline_profiles(x_over_D, S_0, ('n',))['n']
-    simplified = simplified_centerline_density(x_over_D, S_0)
     r = x_over_D * D_NOZZLE
+    analytical = full_field_values('n', r, np.zeros_like(r), S_0)
+    simplified = centerline_profiles(x_over_D, S_0, ('n',))['n']
     simons = simons_density_field(r, np.zeros_like(r), S_0)
 
     fig, ax = plt.subplots(figsize=(6, 4.5))
@@ -469,8 +473,8 @@ def centerline_density_profile_figure(kn_label, fig_stem):
     tail = x_over_D >= 1.0
     annotate_error(
         ax,
-        f'max |n_S/n_A - 1| = {max_rel_diff(simplified[tail], analytical[tail]):.2g} '
-        f'(X/D $\\geq$ 1)\n'
+        f'Eq. 5 vs Eq. 18: max rel diff = '
+        f'{max_rel_diff(simplified, analytical):.1g}\n'
         f'max |n_Sim/n_A - 1| = {max_rel_diff(simons[tail], analytical[tail]):.2g} '
         f'(X/D $\\geq$ 1)', loc='lower right')
     return save_figure(fig, fig_stem)
