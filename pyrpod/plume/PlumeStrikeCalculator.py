@@ -7,12 +7,177 @@ Responsibilities:
 
 This consolidates logic currently in RPOD.jfh_plume_strikes into
 reusable, testable functions.
+
+Implementation notes:
+- compute_plume_strikes() runs a NumPy-vectorized strike-detection path by
+  default. _compute_plume_strikes_scalar() preserves the original per-face
+  loop verbatim as a reference implementation for tests and benchmarking.
+- The vectorized core operates on plain serializable inputs (arrays, dicts,
+  floats) so it can also run inside process-based workers.
+
+Future work (no new dependencies planned):
+- Vectorize the SimplifiedGasKinetics evaluations for struck faces.
+- Shared-memory arrays (multiprocessing.shared_memory) for very large meshes.
+- Chunking strategy to batch many small firings per worker task.
 """
 from __future__ import annotations
 
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional
+
 import numpy as np
 from pyrpod.plume.RarefiedPlumeGasKinetics import SimplifiedGasKinetics
+
+
+def compute_face_centroids(vectors: np.ndarray) -> np.ndarray:
+    """Compute per-face centroids for an (N x 3 x 3) array of face vertices.
+
+    Averages the three vertices of each face, matching the scalar reference
+    (mean over each coordinate in the face's native dtype). The target is
+    stationary during a run, so callers should compute this once and pass it
+    to compute_plume_strikes() via face_centroids.
+    """
+    return np.asarray(vectors).mean(axis=1)
+
+
+def _build_thruster_link(thruster_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Map numeric JFH thruster indices ('1', '2', ...) to thruster names,
+    consistent with legacy ordering of the thruster configuration."""
+    link = {}
+    i = 1
+    for thruster in thruster_data:
+        link[str(i)] = thruster_data[thruster]['name']
+        i += 1
+    return link
+
+
+def extract_plume_params(environment: Any) -> Dict[str, Any]:
+    """Extract the plain config values needed for strike computation.
+
+    Returns a picklable dict (radius, wedge_theta, use_kinetics, and — only
+    when kinetics is enabled — surface_temp and sigma) so workers never need
+    the full environment object.
+    """
+    config = environment.config
+    use_kinetics = config['pm']['kinetics'] != 'None'
+    params: Dict[str, Any] = {
+        'radius': float(config['plume']['radius']),
+        'wedge_theta': float(config['plume']['wedge_theta']),
+        'use_kinetics': use_kinetics,
+        'surface_temp': None,
+        'sigma': None,
+    }
+    if use_kinetics:
+        params['surface_temp'] = float(config['tv']['surface_temp'])
+        params['sigma'] = float(config['tv']['sigma'])
+    return params
+
+
+def _compute_plume_strikes_core(
+    face_centroids: np.ndarray,
+    target_unit_normals: np.ndarray,
+    thruster_data: Dict[str, Any],
+    thruster_metrics: Optional[Dict[str, Any]],
+    jfh_step: Dict[str, Any],
+    plume_params: Dict[str, Any],
+) -> Dict[str, np.ndarray]:
+    """Vectorized strike computation on plain serializable inputs.
+
+    Geometry is evaluated with NumPy over all faces per active thruster.
+    Gas-kinetics quantities remain scalar: SimplifiedGasKinetics is
+    instantiated only for struck face indices, exactly as in the scalar
+    reference. Memory scales with the number of faces (a few (N,) and (N,3)
+    temporaries), independent of the number of firings.
+    """
+    num_faces = len(face_centroids)
+    strikes = np.zeros(num_faces)
+
+    use_kinetics = plume_params['use_kinetics']
+    if use_kinetics:
+        pressures = np.zeros(num_faces)
+        shear_stresses = np.zeros(num_faces)
+        heat_flux = np.zeros(num_faces)
+        heat_flux_load = np.zeros(num_faces)
+
+    vv_pos = np.array(jfh_step['xyz'])
+    vv_orientation = np.array(jfh_step['dcm']).transpose()
+    thrusters = jfh_step['thrusters']
+    firing_time = float(jfh_step['t']) if 't' in jfh_step else 0.0
+
+    link = _build_thruster_link(thruster_data)
+
+    plume_radius = float(plume_params['radius'])
+    wedge_theta = float(plume_params['wedge_theta'])
+
+    normals = np.asarray(target_unit_normals)
+
+    for thr in thrusters:
+        thruster_id = link[str(thr)][0]
+
+        thruster_orientation = np.array(thruster_data[thruster_id]['dcm']).transpose()
+        thruster_orientation = thruster_orientation.dot(vv_orientation)
+        plume_normal = np.array(thruster_orientation[0])
+        norm_plume_normal = np.linalg.norm(plume_normal)
+        unit_plume_normal = plume_normal / norm_plume_normal
+
+        thr_exit = np.array(thruster_data[thruster_id]['exit'])
+        thruster_pos = vv_pos + thr_exit
+        thruster_pos = thruster_pos[0]
+
+        distance = thruster_pos - face_centroids
+        norm_distance = np.linalg.norm(distance, axis=1)
+
+        # Faces whose centroid coincides with the thruster exit are skipped,
+        # matching the scalar reference's `norm_distance == 0` guard.
+        valid = norm_distance != 0.0
+        unit_distance = np.zeros_like(distance)
+        np.divide(
+            distance,
+            norm_distance[:, np.newaxis],
+            out=unit_distance,
+            where=valid[:, np.newaxis],
+        )
+
+        # NOTE: 3.14 (not np.pi) is kept deliberately to reproduce the legacy
+        # scalar reference bit-for-bit; changing it shifts theta by ~1.6e-3 rad
+        # and can alter struck-face IDs near the wedge boundary.
+        theta = 3.14 - np.arccos((unit_distance * unit_plume_normal).sum(axis=1))
+
+        surface_dot_plume = (normals * unit_plume_normal).sum(axis=1)
+
+        hit = (
+            valid
+            & (norm_distance < plume_radius)
+            & (theta < wedge_theta)
+            & (surface_dot_plume < 0)
+        )
+
+        strikes[hit] += 1
+
+        if use_kinetics:
+            T_w = plume_params['surface_temp']
+            sigma = plume_params['sigma']
+            t_type = thruster_data[thruster_id]['type'][0]
+            metrics = thruster_metrics[t_type]
+            for idx in np.nonzero(hit)[0]:
+                simple_plume = SimplifiedGasKinetics(
+                    norm_distance[idx], theta[idx], metrics, T_w, sigma
+                )
+                pressures[idx] += simple_plume.get_pressure()
+                shear = simple_plume.get_shear_pressure()
+                shear_stresses[idx] += abs(shear)
+                hf = simple_plume.get_heat_flux()
+                heat_flux[idx] += hf
+                heat_flux_load[idx] += hf * firing_time
+
+    result = {"strikes": strikes}
+    if use_kinetics:
+        result.update({
+            "pressures": pressures,
+            "shear_stress": shear_stresses,
+            "heat_flux_rate": heat_flux,
+            "heat_flux_load": heat_flux_load,
+        })
+    return result
 
 
 def compute_plume_strikes(
@@ -21,6 +186,7 @@ def compute_plume_strikes(
     vv: Any,
     jfh_step: Dict[str, Any],
     environment: Any,
+    face_centroids: Optional[np.ndarray] = None,
 ) -> Dict[str, np.ndarray]:
     """Compute plume strike arrays for a single JFH step.
 
@@ -30,9 +196,41 @@ def compute_plume_strikes(
     - vv: Visiting vehicle with thruster_data and thruster_metrics
     - jfh_step: dict with keys 'thrusters' (list[int]), 'xyz' (pos), 'dcm' (3x3)
     - environment: provides config for plume and kinetics
+    - face_centroids: optional (N x 3) precomputed face centroids
+      (see compute_face_centroids). When the target is stationary, callers
+      should compute centroids once per run and pass them here; if omitted,
+      they are computed from target_mesh for this step.
 
     Returns
     - dict with per-face arrays for current step: strikes and optionally pressures, shear_stress, heat_flux_rate, heat_flux_load
+    """
+    if face_centroids is None:
+        face_centroids = compute_face_centroids(target_mesh.vectors)
+    plume_params = extract_plume_params(environment)
+    return _compute_plume_strikes_core(
+        face_centroids=face_centroids,
+        target_unit_normals=target_unit_normals,
+        thruster_data=vv.thruster_data,
+        # Only defined/needed when kinetics is enabled; the core only reads it
+        # for struck faces, matching the scalar reference.
+        thruster_metrics=getattr(vv, 'thruster_metrics', None),
+        jfh_step=jfh_step,
+        plume_params=plume_params,
+    )
+
+
+def _compute_plume_strikes_scalar(
+    target_mesh: Any,
+    target_unit_normals: np.ndarray,
+    vv: Any,
+    jfh_step: Dict[str, Any],
+    environment: Any,
+) -> Dict[str, np.ndarray]:
+    """Scalar reference implementation of compute_plume_strikes().
+
+    Preserved verbatim from the original per-face loop. Kept for regression
+    tests, debugging, and benchmarking against the vectorized path; the two
+    must produce identical strike arrays and struck-face IDs.
     """
     num_faces = len(target_mesh.vectors)
     strikes = np.zeros(num_faces)
