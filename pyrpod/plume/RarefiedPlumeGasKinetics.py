@@ -35,13 +35,90 @@ Omega = integral domain
 """
 
 import numpy as np
-import sympy as sp
 from scipy import integrate
-import matplotlib.pyplot as plt
+from scipy.special import erf
 
 #define constants
 AVOGADROS_NUMBER = 6.0221e23
 GAS_CONSTANT = 8.314
+
+
+def get_K_factor(Q, S_0):
+    '''
+        Scaled special factor exp(-S_0^2) * K [Cai & Wang 2012, Eq. 10].
+
+        The exp(-S_0^2) prefactor of the field solutions (Eqs. 5-8, 14)
+        is combined analytically with Eq. 10's exp(Q * S_0^2) into
+        exp(-S_0^2 * (1 - Q)). Since Q <= 1 both exponentials are <= 1,
+        so this never overflows for large speed ratios, while the plain
+        exp(Q * S_0^2) would. The [1 + erf(...)] factor is bounded by 2
+        and needs no scaling.
+
+        Parameters
+        ----------
+        Q : float
+            special factor Q (full or simplified), 0 < Q <= 1
+        S_0 : float
+            molecular speed ratio at the nozzle exit
+
+        Returns
+        -------
+        float
+            exp(-S_0^2) * K(Q, S_0)
+    '''
+    erf_term = (1 + erf(S_0 * np.sqrt(Q))) * np.exp(-S_0 ** 2 * (1 - Q))
+    term1 = Q * S_0 * np.exp(-S_0 ** 2)
+    term2 = (0.5 + Q * S_0 ** 2) * np.sqrt(np.pi * Q)
+    return Q * (term1 + term2 * erf_term)
+
+
+def get_M_factor(Q, S_0):
+    '''
+        Scaled special factor exp(-S_0^2) * M [Cai & Wang 2012, Eq. 11].
+
+        Overflow-safe exponential combination as in get_K_factor.
+
+        Parameters
+        ----------
+        Q : float
+            special factor Q (full or simplified), 0 < Q <= 1
+        S_0 : float
+            molecular speed ratio at the nozzle exit
+
+        Returns
+        -------
+        float
+            exp(-S_0^2) * M(Q, S_0)
+    '''
+    erf_term = (1 + erf(S_0 * np.sqrt(Q))) * np.exp(-S_0 ** 2 * (1 - Q))
+    term1 = (1 + Q * S_0 ** 2) * np.exp(-S_0 ** 2)
+    term2 = S_0 * (1.5 + Q * S_0 ** 2) * np.sqrt(np.pi * Q)
+    return Q ** 2 * (term1 + term2 * erf_term)
+
+
+def get_N_factor(Q, S_0):
+    '''
+        Scaled special factor exp(-S_0^2) * N [Cai & Wang 2012, Eq. 12].
+
+        Overflow-safe exponential combination as in get_K_factor.
+
+        Parameters
+        ----------
+        Q : float
+            special factor Q (full or simplified), 0 < Q <= 1
+        S_0 : float
+            molecular speed ratio at the nozzle exit
+
+        Returns
+        -------
+        float
+            exp(-S_0^2) * N(Q, S_0)
+    '''
+    erf_term = (1 + erf(S_0 * np.sqrt(Q))) * np.exp(-S_0 ** 2 * (1 - Q))
+    term1 = S_0 * Q ** 2 * (1.25 + Q * S_0 ** 2 / 2) * np.exp(-S_0 ** 2)
+    term2 = 0.5 * np.sqrt(np.pi * Q ** 3)
+    term3 = 0.75 + 3 * Q * S_0 ** 2 + Q ** 2 * S_0 ** 4
+    return term1 + term2 * term3 * erf_term
 
 def get_maxwellian_pressure(rho_inf, U, S, sigma, theta, T, T_w):
     '''
@@ -79,7 +156,7 @@ def get_maxwellian_pressure(rho_inf, U, S, sigma, theta, T, T_w):
     p1 *= np.exp(- (S * np.cos(theta)) ** 2)
     p2 = (2 - sigma) * ((S * np.cos(theta)) ** 2 + 0.5)
     p2 += (S * np.cos(theta) * (sigma / 2) * np.sqrt(np.pi * T_w / T))
-    p2 *= 1 + sp.erf(S * np.cos(theta))
+    p2 *= 1 + erf(S * np.cos(theta))
     p = p1 + p2 
     p *= (rho_inf * U ** 2) / (2 * S ** 2)
     return p
@@ -111,7 +188,7 @@ def get_maxwellian_shear_pressure(rho_inf, U, S, sigma, theta):
 
     tau1 = np.exp(- (S * np.cos(theta)) ** 2)
     tau2 = np.sqrt(np.pi) * S * np.cos(theta)
-    tau2 *= (1 + sp.erf(S * np.cos(theta)))
+    tau2 *= (1 + erf(S * np.cos(theta)))
     tau = tau1 + tau2
     tau *= -(sigma * rho_inf * np.sin(theta) * U ** 2) / (2 * np.sqrt(np.pi) * S)
     return tau
@@ -150,7 +227,7 @@ def get_maxwellian_heat_transfer(rho_inf, S, sigma, theta, T, T_r, R, gamma):
             the pressure exerted on the surface element (N / m^2)
     '''
     q = (S ** 2) + (gamma / (gamma - 1)) - (((gamma + 1) * T_r) / (2 * (gamma - 1) * T))
-    q *= np.exp(- (S * np.cos(theta)) ** 2) + (np.sqrt(np.pi) * (S * np.cos(theta)) * (1 + sp.erf(S * np.cos(theta))))
+    q *= np.exp(- (S * np.cos(theta)) ** 2) + (np.sqrt(np.pi) * (S * np.cos(theta)) * (1 + erf(S * np.cos(theta))))
     q -= 0.5 * np.exp(- (S * np.cos(theta)) ** 2)
     q *= sigma * rho_inf * R * T * np.sqrt(R * T / (2 * np.pi))
     return q
@@ -302,7 +379,10 @@ class Simons:
     def set_normalization_constant(self):
         '''
             From Lumpkin 1999. Setter for normalization constant.
-            Integrates theta from 0 to the limiting turn angle.
+            Numerically integrates sin(theta) * cos^kappa(pi*theta/(2*theta_max))
+            from 0 to the limiting turn angle. The integrand is real and
+            non-negative on [0, theta_max] for any kappa, so no complex
+            arithmetic can arise.
 
             Parameters
             ----------
@@ -313,17 +393,13 @@ class Simons:
             None.
         '''
         theta_max = self.get_limiting_turn_angle()
-        theta = sp.symbols('theta')
-        f = (sp.cos((sp.pi / 2) * (theta / theta_max))) ** (2 / (self.gamma - 1))
-        integrand = sp.sin(theta) * f
-        integral = sp.integrate(integrand, (theta, 0, theta_max)) #integrate from 0 to max turning angle
-        A = 0.5 * np.sqrt((self.gamma - 1) / (self.gamma + 1)) / (integral.evalf())
-        
-        # if A is complex, take the real part
-        if type(A) == sp.Add:
-            A = sp.re(A)
+        kappa = 2 / (self.gamma - 1)
 
-        self.A = A
+        def integrand(theta):
+            return np.sin(theta) * np.cos((np.pi / 2) * (theta / theta_max)) ** kappa
+
+        integral, _ = integrate.quad(integrand, 0, theta_max)
+        self.A = 0.5 * np.sqrt((self.gamma - 1) / (self.gamma + 1)) / integral
         return
     
     def get_sonic_velocity(self):
@@ -600,8 +676,11 @@ class SimplifiedGasKinetics:
     
     def set_K_simple(self):
         '''
-            Setter for simplified special factor K. This simplification is just the 
-            substitution of Q for Q'.
+            Setter for simplified special factor K [Cai & Wang 2012, Eq. 10]
+            with Q substituted by Q'. Stored scaled by exp(-S_0^2) for
+            overflow safety (see get_K_factor); ratio methods (U, W, T)
+            are unaffected since the scaling cancels, and the density
+            method uses the scaled factor directly.
 
             Parameters
             ----------
@@ -611,21 +690,15 @@ class SimplifiedGasKinetics:
             -------
             None.
         '''
-        #K_simple = Q_simple * ((Q_simple * S_0) + ((0.5 + (Q_simple * S_0 ** 2)) * np.sqrt(np.pi * Q_simple) * 
-                               #(1 + sp.erf(S_0 * np.sqrt(Q_simple))) ** (Q_simple * S_0 ** 2)))
-        term1 = self.Q_simple * self.S_0
-        term2 = 0.5 + self.Q_simple * self.S_0 ** 2
-        term3 = np.sqrt(np.pi * self.Q_simple)
-        term4 = (1 + sp.erf(self.S_0 * np.sqrt(self.Q_simple))) * np.exp(self.Q_simple * self.S_0 ** 2)
-        K_simple = self.Q_simple * (term1 + term2 * term3 * term4)
-        self.K_simple = K_simple
+        self.K_simple = get_K_factor(self.Q_simple, self.S_0)
 
         return
-    
+
     def set_M_simple(self):
         '''
-            Setter for simplified special factor M. This simplification is just the 
-            substitution of Q for Q'.
+            Setter for simplified special factor M [Cai & Wang 2012, Eq. 11]
+            with Q substituted by Q'. Stored scaled by exp(-S_0^2) for
+            overflow safety (see get_K_factor).
 
             Paramters
             ---------
@@ -635,21 +708,15 @@ class SimplifiedGasKinetics:
             -------
             None.
         '''
-        #M_simple = (Q_simple ** 2) * ((Q_simple * S_0 ** 2) + 1 + (S_0 * (1.5 + (Q_simple * S_0 ** 2)) * 
-                                #np.sqrt(np.pi * Q_simple)) * (1 + sp.erf(S_0 * np.sqrt(Q_simple))) ** (Q_simple *S_0 ** 2))
-        term1 = 1 + self.Q_simple * self.S_0 ** 2
-        term2 = self.S_0 * (1.5 + self.Q_simple * self.S_0 ** 2)
-        term3 = np.sqrt(np.pi * self.Q_simple)
-        term4 = (1 + sp.erf(self.S_0 * np.sqrt(self.Q_simple))) * np.exp(self.Q_simple * self.S_0 ** 2)
-        M_simple = self.Q_simple ** 2 * (term1 + term2 * term3 * term4)
-        self.M_simple = M_simple
+        self.M_simple = get_M_factor(self.Q_simple, self.S_0)
 
         return
-    
+
     def set_N_simple(self):
         '''
-            Setter for simplified special factor N. This simplification is just the 
-            substitution of Q for Q'.
+            Setter for simplified special factor N [Cai & Wang 2012, Eq. 12]
+            with Q substituted by Q'. Stored scaled by exp(-S_0^2) for
+            overflow safety (see get_K_factor).
 
             Parameters
             ----------
@@ -659,14 +726,7 @@ class SimplifiedGasKinetics:
             -------
             None.
         '''
-        #N_simple = S_0 * (Q_simple ** 2) * (1.25 + (Q_simple * S_0 ** 2) / 2)
-        #N_simple += (0.5 * np.sqrt(np.pi * Q_simple ** 3)) * (0.75 + 3 * Q_simple * S_0 **2 + Q_simple ** 2 * S_0 ** 4) * (1 + sp.erf(S_0 * np.sqrt(Q_simple))) ** (Q_simple * S_0 ** 2)
-        term1 = self.S_0 * self.Q_simple ** 2 * (1.25 + self.Q_simple * self.S_0 ** 2 / 2)
-        term2 = 0.5 * np.sqrt(np.pi * self.Q_simple ** 3)
-        term3 = 0.75 + 3 * self.Q_simple * self.S_0 ** 2 + self.Q_simple ** 2 * self.S_0 ** 4
-        term4 = (1 + sp.erf(self.S_0 * np.sqrt(self.Q_simple))) * np.exp(self.Q_simple * self.S_0 ** 2)
-        N_simple = term1 + term2 * term3 * term4
-        self.N_simple = N_simple
+        self.N_simple = get_N_factor(self.Q_simple, self.S_0)
 
         return
     
@@ -684,10 +744,9 @@ class SimplifiedGasKinetics:
             float
                 number density at a point (X, 0, Z) vs number density at the nozzle exit
         '''
-        # num_density_ratio = n_1s(X, 0, Z) / n_0
+        # num_density_ratio = n_1s(X, 0, Z) / n_0 [Cai & Wang 2012, Eq. 14]
+        # K_simple already carries the exp(-S_0^2) prefactor (see set_K_simple)
         num_density_ratio = (self.K_simple / (2 * np.sqrt(np.pi)) * (self.R_0 / self.X) ** 2)
-        num_density_ratio *= np.exp(-(self.S_0 ** 2))
-        num_density_ratio = float(num_density_ratio)
         return num_density_ratio
     
     def get_U_normalized(self):
@@ -705,9 +764,8 @@ class SimplifiedGasKinetics:
             float
                 returns U normalized
         '''
-        # U_normalized = U_1s (X, 0, Z) * sqrt(beta)
+        # U_normalized = U_1s (X, 0, Z) * sqrt(beta) [Cai & Wang 2012, Eq. 15]
         U_normalized = self.M_simple / self.K_simple
-        U_normalized = float(U_normalized)
         return U_normalized
     
     def get_W_normalized(self):
@@ -725,9 +783,8 @@ class SimplifiedGasKinetics:
             float
                 returns W normalized
         '''
-        # W_normalized = W_1s (X, 0, Z) * sqrt(beta)
+        # W_normalized = W_1s (X, 0, Z) * sqrt(beta) [Cai & Wang 2012, Eq. 16]
         W_normalized = (self.M_simple / self.K_simple) * (self.Z / self.X)
-        W_normalized = float(W_normalized)
         return W_normalized
 
     def get_temp_ratio(self):
@@ -744,11 +801,9 @@ class SimplifiedGasKinetics:
             float
                 ratio of temperature at a point (X, 0, Z) to the temperature at the nozzle exit
         '''
-        # T_ratio = T_1s / T_0
+        # T_ratio = T_1s / T_0 [Cai & Wang 2012, Eq. 17]
         T_ratio = ((-2 * self.M_simple ** 2) / (3 * self.Q_simple * self.K_simple ** 2))
         T_ratio += (4 * self.N_simple / (3 * self.K_simple))
-        T_ratio = float(T_ratio)
-        #print(f'S0 = {S_0}, Qs = {Q_simple}, Ks = {K_simple}, Ms = {M_simple}, Ns = {N_simple}, T_ratio = {T_ratio}')
         return T_ratio
     
     def get_num_density_centerline(self):
@@ -766,10 +821,10 @@ class SimplifiedGasKinetics:
                 number density at a point on the centerline
                 vs the number density at the nozzle exit
         '''
-        p1 = self.X / np.sqrt(self.X ** 2 + self.R_0 ** 2) 
+        # n_1(X, 0, 0) / n_0 [Cai & Wang 2012, Eq. 18]
+        p1 = self.X / np.sqrt(self.X ** 2 + self.R_0 ** 2)
         p2 = self.R_0 / np.sqrt(self.X ** 2 + self.R_0 ** 2)
-        n_ratio = 0.5 + 0.5 * sp.erf(self.S_0) - (p1 * np.exp(-self.S_0 ** 2 * p2 ** 2) / 2) * (1 + sp.erf(p1 * self.S_0))
-        n_ratio = float(n_ratio)
+        n_ratio = 0.5 + 0.5 * erf(self.S_0) - (p1 * np.exp(-self.S_0 ** 2 * p2 ** 2) / 2) * (1 + erf(p1 * self.S_0))
 
         return n_ratio
     
@@ -791,11 +846,11 @@ class SimplifiedGasKinetics:
                 velocity at a point on the centerline (X, 0, 0) normalized
                 with the parameter beta at the exit
         '''
-        p1 = self.X / np.sqrt(self.X ** 2 + self.R_0 ** 2) 
+        # U_1(X, 0, 0) * sqrt(beta_0) [Cai & Wang 2012, Eq. 19]
+        p1 = self.X / np.sqrt(self.X ** 2 + self.R_0 ** 2)
         p2 = self.R_0 / np.sqrt(self.X ** 2 + self.R_0 ** 2)
         n_ratio = self.get_num_density_centerline()
-        U_ratio = 1 / (2 * n_ratio) * ((p2 ** 2 * np.exp(- self.S_0 ** 2) / np.sqrt(np.pi)) + (self.S_0 * (1 + sp.erf(self.S_0))) - (np.exp(- p2 ** 2 * self.S_0 ** 2) * p1 ** 3 * self.S_0 * (1 + sp.erf(p1 * self.S_0))))
-        U_ratio = float(U_ratio)
+        U_ratio = 1 / (2 * n_ratio) * ((p2 ** 2 * np.exp(- self.S_0 ** 2) / np.sqrt(np.pi)) + (self.S_0 * (1 + erf(self.S_0))) - (np.exp(- p2 ** 2 * self.S_0 ** 2) * p1 ** 3 * self.S_0 * (1 + erf(p1 * self.S_0))))
         return U_ratio
     
     def get_temp_centerline(self):
@@ -813,17 +868,12 @@ class SimplifiedGasKinetics:
                 temperature on the point on the centerline (X, 0, 0) 
                 vs temperature at the nozzle exit
         '''
+        # T_1(X, 0, 0) / T_0 [Cai & Wang 2012, Eq. 21]
+        # N_simple already carries the exp(-S_0^2) prefactor (see set_N_simple)
         n_ratio = self.get_num_density_centerline()
         U1 = self.get_velocity_centerline()
-        '''
-        r = sp.symbols("r")
-        f = N * r
-        integral = sp.integrate(f, (r, 0, R_0))
-        temp_ratio = (4 * np.exp(- S_0 ** 2)) / (3 * n_ratio * np.sqrt(np.pi) * X ** 2) * integral.evalf() - (U1 ** 2 / (3/2)) 
-        '''
         integral = 0.5 * self.N_simple * self.R_0 ** 2
-        temp_ratio = (4 * np.exp(- self.S_0 ** 2)) / (3 * n_ratio * np.sqrt(np.pi) * self.X ** 2) * integral - (U1 ** 2 / (3/2)) 
-        temp_ratio = float(temp_ratio)
+        temp_ratio = 4 / (3 * n_ratio * np.sqrt(np.pi) * self.X ** 2) * integral - (U1 ** 2 / (3/2))
         return temp_ratio
     
     def get_pressure(self):
@@ -946,191 +996,3 @@ class SimplifiedGasKinetics:
 
             heat_flux = get_maxwellian_heat_transfer(rho_inf, S, self.sigma, self.theta, T, self.T_w, self.R, self.gamma)
         return heat_flux
-'''
-import math
-from scipy.special import legendre
-
-class CollisionlessPlume:
-
-    def __init__(self, U_0, R, T_0, n_iters, conv_tol):
-        self.n_iters = n_iters
-        self.conv_tol = conv_tol
-        self.U_0 = U_0
-        self.R = R
-        self.T_0 = T_0
-        self.S_0 = self.get_speed_ratio()
-        return
-
-    def get_speed_ratio(self):
-        S_0 = self.U_0 / np.sqrt(2 * self.R * self.T_0)
-        return S_0
-
-    #solves a summation series of legengre polynomials of the first kind
-    #from degree 0 to degree n or until the convergance tolerance, tol is met
-    #n: int, x: float (value to evaluate function over), tol: float
-    def get_Q(self, X, Z, r, epsilon):
-        
-        # TEST TODO TEST TODO TEST
-
-        psi = np.arctan(Z/X)
-        leg_x = np.sin(psi) * np.sin(epsilon)
-
-        sum = 0
-        
-        P_n_minus_2 = 1 #P_0 = 1
-        P_n_minus_1 = leg_x #P_1 = x
-        sum += P_n_minus_2 + (P_n_minus_1 * r / np.sqrt(X ** 2 + Z ** 2))
-
-        
-        for degree in range (2, self.n_iters + 1, 1):
-            
-            P_n = legendre(degree)(leg_x)
-            #print(f'degree: {degree}; x: {leg_x}; P_n: {P_n}')
-            sum += P_n
-            if abs(P_n) < self.conv_tol and degree % 2 == 0:
-                break
-            
-            #my recurrence legendre solver
-            #solve for polynomial of degree of current iter
-            
-            P_n = (2 * (degree - 1) + 1) * leg_x * (P_n_minus_1)
-            P_n -= (degree - 1) * P_n_minus_2
-            P_n /= degree
-
-            sum += P_n * (r / np.sqrt(X ** 2 + Z ** 2)) ** degree
-
-            P_n_minus_2 = P_n_minus_1
-            P_n_minus_1 = P_n
-
-            if abs(P_n) < self.conv_tol:
-                break
-            
-        sum = 0.712
-        Q = (np.cos(psi) ** 2) * (sum ** 2)
-
-        return Q
-    
-    def get_K(self, X, Z, r, epsilon):
-        #K = Q * ((Q * S_0) + ((0.5 + (Q * S_0 ** 2)) * sqrt(pi * Q) * 
-                        #(1 + erf(S_0 * sqrt(Q))) ** (Q * S_0 ** 2)))
-        Q = self.get_Q(X, Z, r, epsilon)
-        term1 = Q * self.S_0
-        term2 = 0.5 + Q * self.S_0 ** 2
-        term3 = np.sqrt(np.pi * Q)
-        term4 = (1 + sp.erf(self.S_0 * np.sqrt(Q))) * np.exp(Q * self.S_0 ** 2)
-        K = Q * (term1 + term2 * term3 * term4)
-        return K
-    
-    def get_M(self, X, Z, r, epsilon):
-        #M = (Q ** 2) * ((Q * S_0 ** 2) + 1 + (S_0 * (1.5 + (Q * S_0 ** 2)) * 
-                        #sqrt(pi * Q_simple)) * (1 + erf(S_0 * sqrt(Q))) ** (Q *S_0 ** 2))
-        Q = self.get_Q(X, Z, r, epsilon)
-        term1 = Q * self.S_0 ** 2
-        term2 = 1 + self.S_0 * (1.5 + Q * self.S_0 ** 2)
-        term3 = np.sqrt(np.pi * Q)
-        term4 = (1 + sp.erf(self.S_0 * np.sqrt(Q))) * np.exp(Q * self.S_0 ** 2)
-        M = Q ** 2 * (term1 + term2 * term3 * term4)
-        return M
-    
-    def get_N(self, X, Z, r, epsilon):
-        #N = S_0 * (Q ** 2) * (1.25 + (Q * S_0 ** 2) / 2) + 
-        #(0.5 * sqrt(pi * Q ** 3)) * (0.75 + 3 * Q * S_0 **2 + Q ** 2 * S_0 ** 4) * 
-        #(1 + erf(S_0 * sqrt(Q))) ** (Q * S_0 ** 2)
-        Q = self.get_Q(X, Z, r, epsilon)
-        term1 = self.S_0 * Q ** 2 * (1.25 + Q * self.S_0 ** 2 / 2)
-        term2 = 0.5 * np.sqrt(np.pi * Q ** 3)
-        term3 = 0.75 + 3 * Q * self.S_0 ** 2 + Q ** 2 * self.S_0 ** 4
-        term4 = (1 + sp.erf(self.S_0 * np.sqrt(Q))) * np.exp(Q * self.S_0 ** 2)
-        N = term1 + term2 * term3 * term4
-        return N
-
-    def get_num_density_ratio(self, X, Z, R_0):
-        n_ratio = np.exp(-self.S_0 ** 2) / (X ** 2 * np.pi ** (3/2))
-        n = 15
-        e_a, e_b = -np.pi, np.pi
-        e_h = (e_b - e_a) / n
-
-        e_vals = np.arange(e_a, e_b, e_h)
-        e_vals = np.append(e_vals, e_b)
-        dbl_integral = 0
-
-        epsilon = e_a
-        for idx, epsilon in enumerate(e_vals):
-            if epsilon == e_a or idx == len(e_vals) - 1:
-                integral = self.get_integral(X, Z, R_0, epsilon)
-                dbl_integral += integral
-            elif ((epsilon / e_h) % 3 == 0):
-                integral = self.get_integral(X, Z, R_0, epsilon)
-                dbl_integral += 2 * integral
-            else:
-                integral = self.get_integral(X, Z, R_0, epsilon)
-                dbl_integral += 3 * integral
-        dbl_integral *= 3 * e_h / 8
-        n_ratio *= dbl_integral
-        print(f'S0: {self.S_0}; X: {X}; Z: {Z}; {n_ratio}')
-        return n_ratio
-
-    def get_integral(self, X, Z, R_0, epsilon):
-        
-        r_a, r_b = 0, R_0
-        n = 15
-        r_h = (r_b - r_a) / n
-
-        r_vals = np.arange(r_a, r_b, r_h)
-        r_vals = np.append(r_vals, r_b)
-        integral = 0
-        r = r_a
-        for idx, r in enumerate(r_vals):
-            if r == r_a or idx == len(r_vals) - 1:
-                integral += r * self.get_K(X, Z, r, epsilon)
-            elif ((r / r_h) % 3 == 0):
-                integral += 2 * r * self.get_K(X, Z, r, epsilon)
-            else:
-                integral += 3 * r * self.get_K(X, Z, r, epsilon)
-        integral *= (3 * r_h / 8)
-
-        return integral
-
-import numpy as np
-import matplotlib.pyplot as plt
-
-# Assuming you have an instance of CollisionlessPlume named plume
-
-# Define the range of X / (2 * R_0) values
-x_values = np.linspace(0.3, 10, 100)  # Adjust the range as needed
-
-# Values of S_0 to plot
-u0_values = [2]
-R_0 = 5
-# Create subplots
-plt.figure(figsize=(10, 6))
-plt.title('Normalized analytical number density along centerline')
-plt.xlabel('X / D')
-plt.ylabel('num_density_ratio')
-
-# Plot for each S_0 value
-for u0 in u0_values:
-    num_density_ratios = []
-    plume = CollisionlessPlume(u0 * 15.15255, 0.287, 400, 999, 0.00001)
-    # Calculate num_density_ratio for each X / (2 * R_0)
-    for x_ratio in x_values:
-        X = x_ratio * 2 * R_0  # Calculate X from the ratio
-        Z = 0  # Fixed Z value
-        num_density_ratio = plume.get_num_density_ratio(X, Z, R_0)
-        num_density_ratios.append(num_density_ratio)
-
-    # Plot the results
-    plt.plot(x_values, num_density_ratios, label=f'S_0 = {u0}')
-
-# Show legend
-plt.legend()
-
-# Show the plot
-plt.show()
-
-#test = CollisionlessPlume.get_num_density_ratio()
-    #def get_U_normalized():
-    #def get_W_normalized():
-    #def get_temp_ratio():
-
-'''
