@@ -23,7 +23,7 @@ def write_jfh(path, firings):
     """firings: list of (dt, t, dcm_str, xyz, thrusters)."""
     lines = [f'offseted    {len(firings)}       0', '       0.000       0.000       0.000']
     for n, (dt, t, dcm, xyz, thrusters) in enumerate(firings, start=1):
-        xyz_str = ' '.join(f'{v:g}' for v in xyz)
+        xyz_str = ' '.join(f'{v:.9g}' for v in xyz)
         thr_str = ' '.join(str(i) for i in thrusters)
         lines.append(f'      {n} {dt:g} {t:g} 0 {dcm} {xyz_str} 1 '
                      f'{len(thrusters)} {thr_str}')
