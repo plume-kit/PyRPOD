@@ -11,9 +11,19 @@ reusable, testable functions.
 Implementation notes:
 - compute_plume_strikes() runs a NumPy-vectorized strike-detection path by
   default. _compute_plume_strikes_scalar() preserves the original per-face
-  loop verbatim as a reference implementation for tests and benchmarking.
+  loop as a reference implementation for tests and benchmarking; the two
+  must produce identical strike arrays, struck-face IDs, and load values.
 - The vectorized core operates on plain serializable inputs (arrays, dicts,
   floats) so it can also run inside process-based workers.
+- Surface loads use the TRUE incidence angle: the positional off-axis angle
+  theta locates a face in the plume field (SimplifiedGasKinetics evaluates
+  n, U, T there, and the legacy 3.14-based theta still gates the wedge hit
+  test, bit-for-bit unchanged), but the Shen/Maxwellian wall formulas
+  receive the angle between the local flow direction (face centroid minus
+  thruster exit -- the collisionless flow is radial) and the face unit
+  normal. Previously the positional theta was fed to the wall formulas as
+  the incidence angle, so plate orientation never affected load magnitudes;
+  _surface_loads_with_incidence() is the shared fix for both paths.
 
 Future work (no new dependencies planned):
 - Vectorize the SimplifiedGasKinetics evaluations for struck faces.
@@ -26,7 +36,53 @@ from concurrent.futures import ProcessPoolExecutor
 from typing import Any, Dict, List, Optional, Sequence
 
 import numpy as np
-from pyrpod.plume.RarefiedPlumeGasKinetics import SimplifiedGasKinetics
+from pyrpod.plume.RarefiedPlumeGasKinetics import (
+    AVOGADROS_NUMBER,
+    SimplifiedGasKinetics,
+    get_maxwellian_heat_transfer,
+    get_maxwellian_pressure,
+    get_maxwellian_shear_pressure,
+)
+
+
+def _surface_loads_with_incidence(simple_plume: SimplifiedGasKinetics,
+                                  incidence: float):
+    """Maxwellian surface loads for a struck face at the true incidence angle.
+
+    simple_plume carries the plume-field state at the face's position (its
+    constructor theta is the positional off-axis angle -- a plume-field
+    coordinate); this helper extracts the same local field values the class's
+    own get_pressure/get_shear_pressure/get_heat_flux use (including their
+    exact-centerline branch at theta == 0) and feeds them to the Shen wall
+    formulas with `incidence`, the angle between the local flow direction
+    (radial from the thruster exit) and the face unit normal.
+
+    Returns (pressure, shear, heat_flux) in SI units; shear is signed as
+    returned by get_maxwellian_shear_pressure (callers take abs, matching
+    the legacy accumulation).
+    """
+    if simple_plume.theta != 0:  # not on plume centerline
+        n_inf = simple_plume.n_0 * simple_plume.get_num_density_ratio()
+        T = simple_plume.T_0 * simple_plume.get_temp_ratio()
+        u = simple_plume.get_U_normalized() / simple_plume.beta_0
+        w = simple_plume.get_W_normalized() / simple_plume.beta_0
+        U = np.sqrt(u ** 2 + w ** 2)
+    else:  # on plume centerline: exact closed forms
+        n_inf = simple_plume.n_0 * simple_plume.get_num_density_centerline()
+        T = simple_plume.T_0 * simple_plume.get_temp_centerline()
+        U = simple_plume.get_velocity_centerline() / simple_plume.beta_0
+    rho_inf = n_inf * simple_plume.molar_mass / AVOGADROS_NUMBER
+    S = U * simple_plume.get_beta(T)
+
+    sigma = simple_plume.sigma
+    T_w = simple_plume.T_w
+    pressure = get_maxwellian_pressure(rho_inf, U, S, sigma, incidence,
+                                       T, T_w)
+    shear = get_maxwellian_shear_pressure(rho_inf, U, S, sigma, incidence)
+    heat_flux = get_maxwellian_heat_transfer(rho_inf, S, sigma, incidence,
+                                             T, T_w, simple_plume.R,
+                                             simple_plume.gamma)
+    return pressure, shear, heat_flux
 
 
 def compute_face_centroids(vectors: np.ndarray) -> np.ndarray:
@@ -159,14 +215,19 @@ def _compute_plume_strikes_core(
             sigma = plume_params['sigma']
             t_type = thruster_data[thruster_id]['type'][0]
             metrics = thruster_metrics[t_type]
+            # True incidence angle between the local (radial) flow direction
+            # -unit_distance and the face unit normal; fed to the wall
+            # formulas in place of the positional theta (see module header).
+            incidence = np.arccos(np.clip(
+                (unit_distance * normals).sum(axis=1), -1.0, 1.0))
             for idx in np.nonzero(hit)[0]:
                 simple_plume = SimplifiedGasKinetics(
                     norm_distance[idx], theta[idx], metrics, T_w, sigma
                 )
-                pressures[idx] += simple_plume.get_pressure()
-                shear = simple_plume.get_shear_pressure()
+                p, shear, hf = _surface_loads_with_incidence(
+                    simple_plume, incidence[idx])
+                pressures[idx] += p
                 shear_stresses[idx] += abs(shear)
-                hf = simple_plume.get_heat_flux()
                 heat_flux[idx] += hf
                 heat_flux_load[idx] += hf * firing_time
 
@@ -229,9 +290,12 @@ def _compute_plume_strikes_scalar(
 ) -> Dict[str, np.ndarray]:
     """Scalar reference implementation of compute_plume_strikes().
 
-    Preserved verbatim from the original per-face loop. Kept for regression
-    tests, debugging, and benchmarking against the vectorized path; the two
-    must produce identical strike arrays and struck-face IDs.
+    Preserves the original per-face loop structure (the hit test is
+    bit-for-bit the legacy computation). Kept for regression tests,
+    debugging, and benchmarking against the vectorized path; the two must
+    produce identical strike arrays, struck-face IDs, and load values.
+    Surface loads use the true incidence angle via the shared
+    _surface_loads_with_incidence(), exactly as the vectorized core does.
     """
     num_faces = len(target_mesh.vectors)
     strikes = np.zeros(num_faces)
@@ -298,10 +362,14 @@ def _compute_plume_strikes_scalar(
                     t_type = vv.thruster_data[thruster_id]['type'][0]
                     thruster_metrics = vv.thruster_metrics[t_type]
                     simple_plume = SimplifiedGasKinetics(norm_distance, theta, thruster_metrics, T_w, sigma)
-                    pressures[idx] += simple_plume.get_pressure()
-                    shear = simple_plume.get_shear_pressure()
+                    # True incidence angle (see module header): local flow
+                    # direction -unit_distance vs the face unit normal.
+                    incidence = np.arccos(np.clip(
+                        np.dot(np.squeeze(unit_distance), n), -1.0, 1.0))
+                    p, shear, hf = _surface_loads_with_incidence(
+                        simple_plume, incidence)
+                    pressures[idx] += p
                     shear_stresses[idx] += abs(shear)
-                    hf = simple_plume.get_heat_flux()
                     heat_flux[idx] += hf
                     heat_flux_load[idx] += hf * firing_time
 
