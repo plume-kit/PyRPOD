@@ -1,0 +1,28 @@
+# Normalize line endings to avoid CRLF/LF churn bloating diffs.
+#
+# `text=auto` tells git to store text files with LF in the repository while
+# letting each checkout use the platform's native endings (Windows users
+# still get CRLF locally via core.autocrlf). This keeps blob line endings
+# consistent regardless of contributor OS or editor, so a file's EOL no
+# longer flips and inflates a diff.
+* text=auto
+
+# Explicit source-type declarations (all normalized to LF in the repo).
+*.py    text
+*.md    text
+*.txt   text
+*.csv   text
+*.ini   text
+*.cfg   text
+*.toml  text
+*.yml   text
+*.json  text
+*.log   text
+*.A     text
+*.sh    text eol=lf
+
+# Binary assets — never apply end-of-line conversion to these.
+*.stl   binary
+*.STL   binary
+*.png   binary
+*.pw    binary
