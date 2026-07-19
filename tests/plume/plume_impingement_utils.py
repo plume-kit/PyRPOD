@@ -34,9 +34,11 @@
 #   plate temperature has no effect on Cp,s.
 # * Digitized-overlay slots follow tests/plume/data/digitized/README.md:
 #   fig17_*.csv ... fig21_*.csv (absent files silently skipped).
-# * Generic figure plumbing (save_figure, run_script, overlay_digitized,
+# * Generic figure plumbing (run_script, overlay_digitized,
 #   annotate_error, max_rel_diff) is reused from plume_figure_utils;
-#   only the paper-specific constants live here.
+#   only the paper-specific constants live here. Figures are saved to
+#   the study's own subfolder, tests/plume/output/Cai2016, to keep the
+#   Cai 2016 verification set separate from the 2012 figure outputs.
 
 import sys
 from pathlib import Path
@@ -81,6 +83,8 @@ Q_DYN = 0.5 * N_0 * M_PARTICLE * U_0 ** 2      # n0*m*U0^2/2 (Pa)
 Q_DYN_HEAT = 0.5 * N_0 * M_PARTICLE * U_0 ** 3  # n0*m*U0^3/2 (W/m^2)
 
 GRID_N = 81                    # nodes per plate axis for contour grids
+
+OUTPUT_DIR = base.OUTPUT_DIR / 'Cai2016'   # figure output subfolder
 
 THRUSTER_CHARACTERISTICS = {'d': D_NOZZLE, 've': U_0, 'R': R_SPECIFIC,
                             'gamma': GAMMA, 'Te': T_0, 'n': N_0}
@@ -182,6 +186,15 @@ def chain_grid(n=GRID_N, sigma=SIGMA):
     return {'Cp': Cp, 'Cf1': Cf1, 'Cf2': Cf2, 'Cshear': Csh, 'Cq': Cq}
 
 
+def save_figure(fig, name):
+    """Save PNG to tests/plume/output/Cai2016 and return the path."""
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    path = OUTPUT_DIR / f'{name}.png'
+    fig.savefig(path, dpi=200, bbox_inches='tight')
+    plt.close(fig)
+    return path
+
+
 def mean_rel_diff(candidate, reference, mask):
     """mean |candidate - reference| / |reference| over the masked entries."""
     candidate = np.asarray(candidate, dtype=float)
@@ -237,4 +250,4 @@ def impingement_contour_figure(fig_stem, ref_field, chain_field, levels,
         f'max rel diff = {base.max_rel_diff(chain_field[mask], ref_field[mask]):.2g}\n'
         f'mean rel diff = {mean_rel_diff(chain_field, ref_field, mask):.2g}\n'
         r'(where $|C_{ref}| \geq$ 5% of peak)')
-    return base.save_figure(fig, file_name)
+    return save_figure(fig, file_name)
