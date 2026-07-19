@@ -11,8 +11,10 @@
 #
 # Manual-run verification script (design decision D5): no pytest tests;
 # run directly -- python tests/plume/plume_verification_test_28.py
-# Digitized overlays looked for: fig17_*.csv (e.g. fig17_dsmc_0p2.csv,
-# one CSV per digitized contour polyline).
+# Digitized overlays looked for: cai16_fig17_*.csv (e.g.
+# cai16_fig17_dsmc_0p2.csv, one CSV per digitized contour polyline; the
+# cai16_ prefix keeps the 2016 paper's slots distinct from the Cai &
+# Wang 2012 fig17 slot).
 
 import plume_impingement_utils as u
 
@@ -22,7 +24,7 @@ def generate_figure():
     chain = u.chain_grid()
     levels = [0.005, 0.01, 0.05, 0.1, 0.2]
     return u.impingement_contour_figure(
-        'fig17', ref['Cp_d'], chain['Cp'], levels,
+        'cai16_fig17', ref['Cp_d'], chain['Cp'], levels,
         'Diffuse plate $C_{p,d}(s,\\tau)$, $S_0$=2.0, '
         '$T_w/T_0$=1.5, $\\alpha_0$=60$^\\circ$ (Fig. 17)',
         'fig17_diffuse_pressure')

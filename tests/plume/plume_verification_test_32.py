@@ -9,8 +9,8 @@
 #
 # Manual-run verification script (design decision D5): no pytest tests;
 # run directly -- python tests/plume/plume_verification_test_32.py
-# Digitized overlays looked for: fig21_*.csv (one CSV per digitized
-# contour polyline).
+# Digitized overlays looked for: cai16_fig21_*.csv (one CSV per
+# digitized contour polyline; cai16_ prefix avoids the 2012 fig21 slot).
 
 import plume_impingement_utils as u
 
@@ -20,7 +20,7 @@ def generate_figure():
     chain = u.chain_grid()
     levels = [0.001, 0.01, 0.05]
     return u.impingement_contour_figure(
-        'fig21', ref['Cq_d'], chain['Cq'], levels,
+        'cai16_fig21', ref['Cq_d'], chain['Cq'], levels,
         'Diffuse plate $C_{q,d}(s,\\tau)$, $S_0$=2.0, '
         '$T_w/T_0$=1.5, $\\alpha_0$=60$^\\circ$ (Fig. 21)',
         'fig21_diffuse_heat_flux')

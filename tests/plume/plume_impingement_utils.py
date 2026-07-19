@@ -32,8 +32,22 @@
 #   sigma = 0 (fully specular reflection) -- Shen's formulas then drop
 #   the wall-temperature term, matching the paper's remark that the
 #   plate temperature has no effect on Cp,s.
-# * Digitized-overlay slots follow tests/plume/data/digitized/README.md:
-#   fig17_*.csv ... fig21_*.csv (absent files silently skipped).
+# * Scripts _33.._40 reproduce the paper's remaining figures from the
+#   same single source of truth (pyrpod/plume/CaiImpingement2016.py):
+#   Figs. 5-6 (Section-3 2D flowfield temperature with a diffuse /
+#   specular plate), Figs. 7-10 (2D plate surface Cp/Cf/Cq profiles),
+#   and Figs. 15-16 (Section-4 flowfield pressure in the Y = 0 plane).
+#   The Section-3 validation geometry (slot 2H, L = 4*(2H), plate
+#   semi-width W = 5*(2H)) is read off the paper's figures -- see the
+#   reference module docstring. These figures have no PyRPOD-chain
+#   overlay: SimplifiedGasKinetics is a round-nozzle model (not
+#   comparable to the 2D slot jet) and the strike pipeline computes no
+#   flowfields-with-plates, so they are reference + digitized-DSMC
+#   reproductions only.
+# * Digitized-overlay slots follow tests/plume/data/digitized/README.md
+#   with the cai16_ stem prefix (the 2016 paper's figure numbers would
+#   otherwise collide with the 2012 slots): cai16_fig05_*.csv ...
+#   cai16_fig21_*.csv (absent files silently skipped).
 # * Generic figure plumbing (run_script, overlay_digitized,
 #   annotate_error, max_rel_diff) is reused from plume_figure_utils;
 #   only the paper-specific constants live here. Figures are saved to
@@ -85,6 +99,18 @@ Q_DYN_HEAT = 0.5 * N_0 * M_PARTICLE * U_0 ** 3  # n0*m*U0^3/2 (W/m^2)
 GRID_N = 81                    # nodes per plate axis for contour grids
 
 OUTPUT_DIR = base.OUTPUT_DIR / 'Cai2016'   # figure output subfolder
+
+# Section-3 (2D slot jet) validation geometry in units of the slot
+# height D2 = 2H (read off the paper's figures; see the reference
+# module docstring): L = 4*(2H), plate semi-width W = 5*(2H).
+D2_SLOT = 1.0
+H_SLOT = D2_SLOT / 2.0
+L_2D = 4.0 * D2_SLOT
+W_2D = 5.0 * D2_SLOT
+ALPHA_2D = np.deg2rad(60.0)    # Figs. 5-6 inclination
+
+#: paper-legend line styles for the four-parameter profile figures
+PROFILE_STYLES = ['-', '--', (0, (6, 2)), '-.']
 
 THRUSTER_CHARACTERISTICS = {'d': D_NOZZLE, 've': U_0, 'R': R_SPECIFIC,
                             'gamma': GAMMA, 'Te': T_0, 'n': N_0}
@@ -250,4 +276,99 @@ def impingement_contour_figure(fig_stem, ref_field, chain_field, levels,
         f'max rel diff = {base.max_rel_diff(chain_field[mask], ref_field[mask]):.2g}\n'
         f'mean rel diff = {mean_rel_diff(chain_field, ref_field, mask):.2g}\n'
         r'(where $|C_{ref}| \geq$ 5% of peak)')
+    return save_figure(fig, file_name)
+
+
+def _draw_plate_trace(ax, alpha_0, L, semi_length):
+    """Plate trace in the plotted plane (2D plate line or the 3D plate's
+    Y = 0 section), drawn like the paper's contour figures."""
+    tau = np.array([-semi_length, semi_length])
+    ax.plot(L + tau * np.cos(alpha_0), tau * np.sin(alpha_0), 'k-', lw=1.6)
+
+
+def planar_temperature_contour_figure(plate, levels, fig_stem, file_name,
+                                      title, S_0=2.0, grid_n=161):
+    """Figs. 5-6 builder: 2D flowfield temperature contours T/T0 for the
+    slot jet with a diffuse or specular plate (delegates to
+    cai.planar_flowfield), solid black with labels, plate line drawn,
+    digitized slots overlaid."""
+    x = np.linspace(0.05, 8.0, grid_n)
+    y = np.linspace(-4.0, 4.0, grid_n)
+    Xg, Yg = np.meshgrid(x * D2_SLOT, y * D2_SLOT)
+    T = cai.planar_flowfield(Xg, Yg, S_0, ALPHA_2D, EPS, H_SLOT, L_2D,
+                             W_2D, plate=plate)['T']
+
+    fig, ax = plt.subplots(figsize=(6, 6))
+    cs = ax.contour(x, y, T, levels=levels, colors='k', linewidths=1.1)
+    ax.clabel(cs, fmt='%g', fontsize=7)
+    _draw_plate_trace(ax, ALPHA_2D, L_2D, W_2D)
+    n_dig = base.overlay_digitized(ax, fig_stem, style='line')
+
+    ax.set_xlim(0, 8)
+    ax.set_ylim(-4, 4)
+    ax.set_xlabel('X/(2H)')
+    ax.set_ylabel('Y/(2H)')
+    ax.set_title(title)
+    handles = [plt.Line2D([], [], color='k', lw=1.1, label='Analytical')]
+    if n_dig:
+        handles.append(plt.Line2D([], [], color='k', lw=1.0,
+                                  label='DSMC (digitized)'))
+    ax.legend(handles=handles, fontsize=7, loc='lower right')
+    return save_figure(fig, file_name)
+
+
+def planar_profile_figure(quantity, params, fig_stem, file_name, title,
+                          ylabel, ylim, n_s=401):
+    """Figs. 7-10 builder: 2D plate surface coefficient profiles vs
+    s/(2H) for (S_0, alpha_0 deg) parameter combinations (delegates to
+    cai.planar_surface_coefficients), paper-style black line styles,
+    digitized slots overlaid."""
+    s = np.linspace(-5.0, 5.0, n_s) * D2_SLOT
+
+    fig, ax = plt.subplots(figsize=(6, 4.5))
+    for (S_0, alpha_deg), ls in zip(params, PROFILE_STYLES):
+        coeffs = cai.planar_surface_coefficients(
+            s, S_0, np.deg2rad(alpha_deg), EPS, H_SLOT, L_2D)
+        ax.plot(s / D2_SLOT, coeffs[quantity], color='k', ls=ls, lw=1.1,
+                label=f'$S_0$={S_0:g}, {alpha_deg:g}$^\\circ$')
+    base.overlay_digitized(ax, fig_stem)
+
+    ax.set_xlim(-5, 6)
+    ax.set_ylim(*ylim)
+    ax.set_xlabel('s/(2H)')
+    ax.set_ylabel(ylabel)
+    ax.set_title(title)
+    ax.legend(fontsize=8)
+    return save_figure(fig, file_name)
+
+
+def pressure_contour_figure_3d(plate, levels, fig_stem, file_name, title,
+                               S_0=2.0, grid_n=141):
+    """Figs. 15-16 builder: Section-4 flowfield static-pressure contours
+    p/p0 in the vertical Y = 0 plane with a diffuse or specular plate
+    (delegates to cai.flowfield_pressure_plane), plate section drawn,
+    digitized slots overlaid."""
+    x = np.linspace(0.05, 8.0, grid_n)
+    z = np.linspace(-4.0, 4.0, grid_n)
+    Xg, Zg = np.meshgrid(x * D_NOZZLE, z * D_NOZZLE)
+    p = cai.flowfield_pressure_plane(
+        Xg, Zg, S_0, ALPHA_0, EPS, R_0, L_PLATE, W_0, H_0,
+        plate=plate)['p']
+
+    fig, ax = plt.subplots(figsize=(6, 6))
+    cs = ax.contour(x, z, p, levels=levels, colors='k', linewidths=1.1)
+    ax.clabel(cs, fmt='%g', fontsize=7)
+    _draw_plate_trace(ax, ALPHA_0, L_PLATE, H_0)
+    n_dig = base.overlay_digitized(ax, fig_stem, style='line')
+
+    ax.set_xlim(0, 8)
+    ax.set_ylim(-4, 4)
+    ax.set_xlabel('$X/(2R_0)$')
+    ax.set_ylabel('$W/(2R_0)$')
+    ax.set_title(title)
+    handles = [plt.Line2D([], [], color='k', lw=1.1, label='Analytical')]
+    if n_dig:
+        handles.append(plt.Line2D([], [], color='k', lw=1.0,
+                                  label='DSMC (digitized)'))
+    ax.legend(handles=handles, fontsize=7, loc='lower right')
     return save_figure(fig, file_name)

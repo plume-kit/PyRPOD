@@ -10,8 +10,8 @@
 #
 # Manual-run verification script (design decision D5): no pytest tests;
 # run directly -- python tests/plume/plume_verification_test_29.py
-# Digitized overlays looked for: fig18_*.csv (one CSV per digitized
-# contour polyline).
+# Digitized overlays looked for: cai16_fig18_*.csv (one CSV per
+# digitized contour polyline; cai16_ prefix avoids the 2012 fig18 slot).
 
 import plume_impingement_utils as u
 
@@ -21,7 +21,7 @@ def generate_figure():
     chain = u.chain_grid(sigma=0.0)
     levels = [0.005, 0.01, 0.05, 0.1, 0.2, 0.3]
     return u.impingement_contour_figure(
-        'fig18', ref['Cp_s'], chain['Cp'], levels,
+        'cai16_fig18', ref['Cp_s'], chain['Cp'], levels,
         'Specular plate $C_{p,s}(s,\\tau)$, $S_0$=2.0, '
         '$\\alpha_0$=60$^\\circ$ (Fig. 18)',
         'fig18_specular_pressure',
