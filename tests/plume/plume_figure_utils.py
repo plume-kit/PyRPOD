@@ -77,6 +77,11 @@ SIGMA = 1.0
 BOLTZMANN = 1.380649e-23  # J / K
 
 OUTPUT_DIR = _THIS_DIR / 'output'
+# Cai & Wang 2012 figures live in their own output subfolder, parallel to
+# the Cai 2016 impingement set in output/Cai2016 (see
+# plume_impingement_utils.OUTPUT_DIR). OUTPUT_DIR itself stays the shared
+# output root so that derived path is unaffected.
+CAI2012_DIR = OUTPUT_DIR / 'Cai2012'
 DIGITIZED_DIR = _THIS_DIR / 'data' / 'digitized'
 
 X_MIN_OVER_D = 0.05    # models require X > 0
@@ -381,9 +386,9 @@ def annotate_error(ax, text, loc='lower left'):
 
 
 def save_figure(fig, name):
-    """Save PNG to tests/plume/output and return the path."""
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    path = OUTPUT_DIR / f'{name}.png'
+    """Save PNG to tests/plume/output/Cai2012 and return the path."""
+    CAI2012_DIR.mkdir(parents=True, exist_ok=True)
+    path = CAI2012_DIR / f'{name}.png'
     fig.savefig(path, dpi=200, bbox_inches='tight')
     plt.close(fig)
     return path

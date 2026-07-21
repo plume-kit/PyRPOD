@@ -16,7 +16,7 @@
 # The filename intentionally avoids pytest's collection patterns
 # (test_*.py / *_test_*.py): this is a manual-run generator --
 #     python tests/plume/plume_verification_error_summary.py
-# It writes tests/plume/output/model_error_summary.csv and .md.
+# It writes tests/plume/output/Cai2012/model_error_summary.csv and .md.
 
 import numpy as np
 
@@ -77,11 +77,11 @@ def build_rows():
 
 def write_summary():
     rows = build_rows()
-    u.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    u.CAI2012_DIR.mkdir(parents=True, exist_ok=True)
     columns = ['curve', 'quantity', 'comparison', 'max_rel_diff',
                'max_rel_diff_restricted', 'restriction', 'vs_DSMC']
 
-    csv_path = u.OUTPUT_DIR / 'model_error_summary.csv'
+    csv_path = u.CAI2012_DIR / 'model_error_summary.csv'
     with open(csv_path, 'w', encoding='utf-8', newline='') as fh:
         fh.write(','.join(columns) + '\n')
         for row in rows:
@@ -89,7 +89,7 @@ def write_summary():
                 f'{row[c]:.4g}' if isinstance(row[c], float) else str(row[c])
                 for c in columns) + '\n')
 
-    md_path = u.OUTPUT_DIR / 'model_error_summary.md'
+    md_path = u.CAI2012_DIR / 'model_error_summary.md'
     with open(md_path, 'w', encoding='utf-8', newline='') as fh:
         fh.write('# Model-vs-model error summary (Table 1 analog)\n\n')
         fh.write(f'Cai & Wang 2012 conditions, S0 = {S_0}. DSMC reference '
