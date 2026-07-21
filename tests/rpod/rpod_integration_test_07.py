@@ -55,7 +55,7 @@ from pyrpod.rpod import JetFiringHistory, PlumeStrikeEstimationStudy  # noqa: E4
 from pyrpod.vehicle import TargetVehicle, VisitingVehicle  # noqa: E402
 
 CASE_DIR = '../case/plume/plume_inclined_plate/'
-SUMMARY_PATH = _TESTS_DIR / 'plume' / 'output' / \
+SUMMARY_PATH = _TESTS_DIR / 'plume' / 'output' / 'Cai2016' / \
     'cai2016_pipeline_error_summary.md'
 
 

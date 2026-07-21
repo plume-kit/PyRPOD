@@ -20,7 +20,7 @@
 # The filename intentionally avoids pytest's collection patterns
 # (test_*.py / *_test_*.py): this is a manual-run generator --
 #     python tests/plume/plume_impingement_error_summary.py
-# It writes tests/plume/output/cai2016_error_summary.csv and .md.
+# It writes tests/plume/output/Cai2016/cai2016_error_summary.csv and .md.
 
 import numpy as np
 
@@ -65,11 +65,11 @@ def build_rows():
 
 def write_summary():
     rows = build_rows()
-    u.base.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    u.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     columns = ['quantity', 'comparison', 'max_rel_diff', 'mean_rel_diff',
                'restriction', 'vs_DSMC']
 
-    csv_path = u.base.OUTPUT_DIR / 'cai2016_error_summary.csv'
+    csv_path = u.OUTPUT_DIR / 'cai2016_error_summary.csv'
     with open(csv_path, 'w', encoding='utf-8', newline='') as fh:
         fh.write(','.join(columns) + '\n')
         for row in rows:
@@ -77,7 +77,7 @@ def write_summary():
                 f'{row[c]:.4g}' if isinstance(row[c], float) else str(row[c])
                 for c in columns) + '\n')
 
-    md_path = u.base.OUTPUT_DIR / 'cai2016_error_summary.md'
+    md_path = u.OUTPUT_DIR / 'cai2016_error_summary.md'
     with open(md_path, 'w', encoding='utf-8', newline='') as fh:
         fh.write('# Cai 2016 impingement error summary '
                  '(reference vs PyRPOD chain)\n\n')
