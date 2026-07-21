@@ -18,7 +18,20 @@ Outputs, to case/plume/plume_inclined_plate/results/sweep/ (gitignored):
   - coeff_<name>.png: each averaged coefficient vs alpha, one curve per
     L/D, pipeline (solid + markers) and reference (dashed) on the same axes;
   - peaks.png: peak per-face pressure/shear/heat-flux coefficients vs alpha
-    per L/D.
+    per L/D;
+  - vtk/firing-<i>_a<alpha>_LoD<LD>.vtu: one VTK unstructured grid per
+    firing (same writer as the other RPOD cases) carrying that pose's own
+    per-face strikes, dimensional loads (pressure_Pa, shear_Pa,
+    heat_flux_W_m2), and coefficients (Cp, Cshear, Cf1_case, Cf2_case, Cq).
+    The Cf components here are in the mesh's CASE frame, un-flipped -- so
+    the shear vectors point the way they physically do on that pose's
+    mesh, unlike the paper-convention aggregate CF1/CM in the CSV. Written
+    per firing (independent poses; no cumulative accumulation, unlike
+    PlumeStrikeEstimationStudy.jfh_plume_strikes), so each file is exactly
+    one pose. sweep_LoD<LD>.pvd ParaView collections group the
+    fixed-distance poses with alpha as the time coordinate, so an angle
+    sweep can be scrubbed in ParaView. Disable the VTK export with
+    --no-vtk (CSV + plots only).
 
 Conventions and sanity checks:
   - Averaged pipeline coefficients follow Eq. 15: area-weighted sums over
@@ -45,8 +58,10 @@ Conventions and sanity checks:
     likewise keeps only the small plume-spread load.)
 
 Run from the repo root:  python scripts/inclined_plate_sweep_study.py
+(add --no-vtk to skip the per-pose VTK export).
 """
 
+import argparse
 import csv
 import sys
 import time
@@ -71,11 +86,13 @@ from pyrpod.plume.PlumeStrikeCalculator import (  # noqa: E402
     compute_plume_strikes,
 )
 from pyrpod.rpod import JetFiringHistory  # noqa: E402
+from pyrpod.util.stl.stl import convert_stl_to_vtk  # noqa: E402
 from pyrpod.vehicle import TargetVehicle, VisitingVehicle  # noqa: E402
 
 CASE_DIR = str(_REPO_ROOT / 'case' / 'plume' / 'plume_inclined_plate') + '/'
 SWEEP_JFH = 'jfh_inclined_plate_sweep.A'
 RESULTS_DIR = Path(CASE_DIR) / 'results' / 'sweep'
+VTK_DIR = RESULTS_DIR / 'vtk'
 
 PLATE_CENTER = np.array([4.0, 0.0, 0.0])
 ALPHA0_DEG = 60.0                       # the mesh's fixed global tilt
@@ -117,7 +134,10 @@ def face_areas(vectors):
 
 def pipeline_row(result, centroids, normals, areas, tau_face, thruster_pos,
                  alpha_deg):
-    """Eq.-15 averaged coefficients + peaks from one firing's face arrays."""
+    """Eq.-15 averaged coefficients, peaks, and per-face field arrays from
+    one firing. Returns (coeffs, peaks, face_fields); face_fields holds
+    the case-frame per-face arrays for VTK (Cf1_case/Cf2_case un-flipped,
+    matching the actual mesh, unlike the paper-convention aggregates)."""
     S_tot = float(np.sum(areas))
     Cp = result['pressures'] / piu.Q_DYN
     Csh = result['shear_stress'] / piu.Q_DYN
@@ -145,11 +165,45 @@ def pipeline_row(result, centroids, normals, areas, tau_face, thruster_pos,
     CQ = float(np.sum(Cq * areas) / S_tot)
     CM = flip * float(np.sum(tau_face * Cp * areas) / (2.0 * H_0 * S_tot))
     s_cc = CM / CP if CP != 0.0 else float('nan')
+
+    face_fields = {
+        'strikes': result['strikes'],
+        'pressure_Pa': result['pressures'],
+        'shear_Pa': result['shear_stress'],
+        'heat_flux_W_m2': result['heat_flux_rate'],
+        'Cp': Cp,
+        'Cshear': Csh,
+        'Cf1_case': Cf1,
+        'Cf2_case': Cf2,
+        'Cq': Cq,
+    }
     return ({'CP': CP, 'CF1': CF1, 'CF2': CF2, 'CQ': CQ, 'CM': CM,
              's_cc': s_cc},
             {'peak_Cp': float(np.max(Cp)), 'peak_Cshear': float(np.max(Csh)),
              'peak_Cq': float(np.max(Cq)),
-             'n_struck': int(np.count_nonzero(result['strikes']))})
+             'n_struck': int(np.count_nonzero(result['strikes']))},
+            face_fields)
+
+
+def write_pose_vtk(target, face_fields, base_name):
+    """Write one pose's per-face fields to VTK_DIR/<base_name>.vtu via the
+    shared convert_stl_to_vtk writer (pyevtk needs C-contiguous float64)."""
+    cell_data = {k: np.ascontiguousarray(v, dtype=np.float64)
+                 for k, v in face_fields.items()}
+    convert_stl_to_vtk(target, VTK_DIR, filename=base_name,
+                       cellData=cell_data)
+
+
+def write_pvd(path, entries):
+    """ParaView collection grouping (timestep, relative_vtu_path) entries."""
+    lines = ['<?xml version="1.0"?>',
+             '<VTKFile type="Collection" version="0.1" '
+             'byte_order="LittleEndian">', '  <Collection>']
+    for timestep, rel_file in sorted(entries):
+        lines.append(f'    <DataSet timestep="{timestep:g}" group="" '
+                     f'part="0" file="{rel_file}"/>')
+    lines += ['  </Collection>', '</VTKFile>']
+    path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
 
 
 def reference_rows():
@@ -247,7 +301,7 @@ def plot_peaks(rows, out_dir):
     plt.close(fig)
 
 
-def main():
+def main(write_vtk=True):
     t_start = time.perf_counter()
     jfh, tv, vv, me = load_case()
     n_firings = len(jfh.JFH)
@@ -260,6 +314,10 @@ def main():
     centroids = compute_face_centroids(target.vectors)
     areas = face_areas(target.vectors)
     tau_face = (centroids - PLATE_CENTER) @ TANGENT_TAU
+
+    if write_vtk:
+        VTK_DIR.mkdir(parents=True, exist_ok=True)
+    pvd_entries = {}   # L/D -> [(alpha_deg, relative vtu path)]
 
     print(f'reference curves: {len(set(abs(ALPHAS_DEG)))} angles x '
           f'{len(L_OVER_D)} distances (Eq. 15 quadrature) ...')
@@ -282,8 +340,9 @@ def main():
                                        face_centroids=centroids)
         dt = time.perf_counter() - t_f
 
-        coeffs, peaks = pipeline_row(result, centroids, normals, areas,
-                                     tau_face, step['xyz'], alpha_deg)
+        coeffs, peaks, face_fields = pipeline_row(
+            result, centroids, normals, areas, tau_face, step['xyz'],
+            alpha_deg)
         ref = ref_cache[(abs(alpha_deg), L)]
         row = {'alpha_deg': alpha_deg, 'L_over_D': L,
                'alpha_paper_deg': 90.0 - abs(alpha_deg),
@@ -292,6 +351,13 @@ def main():
             row[f'{name}_pipe'] = coeffs[name]
             row[f'{name}_ref'] = float(ref[name])
         rows.append(row)
+
+        if write_vtk:
+            base = (f'firing-{i:02d}_a{int(alpha_deg):+03d}'
+                    f'_LoD{int(L):02d}')
+            write_pose_vtk(target, face_fields, base)
+            pvd_entries.setdefault(L, []).append(
+                (alpha_deg, f'vtk/{base}.vtu'))
     t_sweep = time.perf_counter() - t0
 
     # sanity: report the edge-on poses (strike membership is
@@ -322,6 +388,13 @@ def main():
     plot_peaks(rows, RESULTS_DIR)
     print(f'wrote coefficient and peak plots to {RESULTS_DIR}')
 
+    if write_vtk:
+        for L, entries in pvd_entries.items():
+            write_pvd(RESULTS_DIR / f'sweep_LoD{int(L):02d}.pvd', entries)
+        print(f'wrote {n_firings} per-pose VTK files to {VTK_DIR} '
+              f'(+ {len(pvd_entries)} sweep_LoD*.pvd collections in '
+              f'{RESULTS_DIR})')
+
     n_faces = len(target.vectors)
     print(f'timings: {n_firings} firings x {n_faces} faces -- sweep '
           f'{t_sweep:.1f} s ({t_sweep / n_firings * 1e3:.0f} ms/firing), '
@@ -330,4 +403,9 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument('--no-vtk', action='store_true',
+                        help='skip the per-pose VTK export (CSV + plots '
+                             'only)')
+    args = parser.parse_args()
+    main(write_vtk=not args.no_vtk)
