@@ -8,7 +8,7 @@
 # Manual-run verification script (design decision D5): it defines no
 # pytest tests and is executed directly --
 #     python tests/plume/plume_verification_test_04.py
-# The figure is saved to tests/plume/output/.
+# The figure is saved to tests/plume/output/Cai2012/.
 # Digitized overlays looked for: fig02_*.csv (none published -- Fig. 2
 # has no DSMC data in the paper).
 

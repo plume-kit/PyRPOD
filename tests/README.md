@@ -41,6 +41,20 @@ This dashboard provides an overview of all tests in the PyRPOD project, categori
 | `plume_integration_test_01.py`  | Integration    | Tests plume modeling in integrated systems.  | ❌     |
 | `plume_unit_test_01.py`         | Unit           | Verifies individual plume calculation methods.| ❌     |
 | `plume_verification_test_01.py` | Verification   | Validates plume outputs against benchmarks.  | ❌     |
+| `plume_verification_test_28.py` | Verification   | Cai 2016 Fig. 17: diffuse-plate Cp contours (manual-run figure). | ✅     |
+| `plume_verification_test_29.py` | Verification   | Cai 2016 Fig. 18: specular-plate Cp contours (manual-run figure). | ✅     |
+| `plume_verification_test_30.py` | Verification   | Cai 2016 Fig. 19: diffuse-plate Cf1 contours (manual-run figure). | ✅     |
+| `plume_verification_test_31.py` | Verification   | Cai 2016 Fig. 20: diffuse-plate Cf2 contours (manual-run figure). | ✅     |
+| `plume_verification_test_32.py` | Verification   | Cai 2016 Fig. 21: diffuse-plate Cq contours (manual-run figure). | ✅     |
+| `plume_verification_test_33.py` | Verification   | Cai 2016 Fig. 5: 2D diffuse-plate flowfield T contours (manual-run figure). | ✅     |
+| `plume_verification_test_34.py` | Verification   | Cai 2016 Fig. 6: 2D specular-plate flowfield T contours (manual-run figure). | ✅     |
+| `plume_verification_test_35.py` | Verification   | Cai 2016 Fig. 7: 2D diffuse-plate Cp profiles (manual-run figure). | ✅     |
+| `plume_verification_test_36.py` | Verification   | Cai 2016 Fig. 8: 2D specular-plate Cp profiles (manual-run figure). | ✅     |
+| `plume_verification_test_37.py` | Verification   | Cai 2016 Fig. 9: 2D diffuse-plate Cf profiles (manual-run figure). | ✅     |
+| `plume_verification_test_38.py` | Verification   | Cai 2016 Fig. 10: 2D diffuse-plate Cq profiles (manual-run figure). | ✅     |
+| `plume_verification_test_39.py` | Verification   | Cai 2016 Fig. 15: 3D diffuse-plate flowfield p contours (manual-run figure). | ✅     |
+| `plume_verification_test_40.py` | Verification   | Cai 2016 Fig. 16: 3D specular-plate flowfield p contours (manual-run figure). | ✅     |
+| `plume_impingement_error_summary.py` | Verification | Cai 2016 reference vs PyRPOD-chain max/mean error table (manual-run generator). | ✅     |
 
 ---
 
@@ -51,6 +65,7 @@ This dashboard provides an overview of all tests in the PyRPOD project, categori
 | `rpod_integration_test_02.py`   | Integration    | Asserts plume strikes for notional 1D approach.      | ✅     |
 | `rpod_integration_test_03.py`   | Integration    | Asserts plume strikes using KOZ geometry.            | ✅     |
 | `rpod_integration_test_04.py`   | Integration    | Asserts plume strikes using hollow cube geometry.    | ✅     |
+| `rpod_integration_test_07.py`   | Integration    | Cai 2016 inclined-plate case: pipeline loads vs exact reference. | ✅     |
 | `rpod_unit_test_01.py`          | Unit           | Verifies STL to VTK data conversion.                 | ✅     |
 | `rpod_unit_test_02.py`          | Unit           | Verifiy behavior of JFH reader.                      | ✅     |
 | `rpod_unit_test_03.py`          | Unit           | Produces JFH data according to produced equation.    | ⏳     |

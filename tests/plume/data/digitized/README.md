@@ -5,6 +5,18 @@ Drop digitized curves from Cai & Wang 2012 (JSR 49(1), DOI
 (`tests/plume/plume_verification_test_04` ... `_27`) will overlay them
 automatically on their next run. No code changes are needed.
 
+The same convention serves the Cai 2016 impingement figures
+(Aerospace 3(4):43, DOI 10.3390/aerospace3040043) reproduced by
+`plume_verification_test_28` ... `_40`, with a `cai16_` stem prefix so
+the 2016 paper's figure numbers never collide with the 2012 slots
+above: `cai16_fig05_*.csv` ... `cai16_fig10_*.csv` (Section 3, 2D
+planar plate), `cai16_fig15_*.csv`, `cai16_fig16_*.csv` (flowfield
+pressure contours), and `cai16_fig17_*.csv` ... `cai16_fig21_*.csv`
+(3D plate surface coefficients). One CSV per digitized DSMC/analytic
+curve or contour polyline in the figure's plotted units, e.g.
+`cai16_fig17_dsmc_0p2.csv` for the Cp = 0.2 line of the 2016 Fig. 17,
+or `cai16_fig07_dsmc.csv` for the DSMC Cp profile of the 2016 Fig. 7.
+
 ## File convention
 
 - Name: `<figstem>_<series>.csv`, where `<figstem>` is the paper figure
