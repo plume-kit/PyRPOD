@@ -43,15 +43,23 @@ ALPHAS_DEG = np.arange(-90.0, 90.0 + 1e-9, 10.0)
 L_OVER_D = [2.0, 4.0, 6.0, 8.0, 10.0]
 
 
-def pose_for(alpha_deg, L):
+def pose_for(alpha_deg, L, plate_center=PLATE_CENTER, alpha0_deg=ALPHA0_DEG):
     """(vv_position, dcm) for one sweep firing; dcm's first column is the
-    thruster axis (see the pipeline's plume-normal convention)."""
-    a0 = np.deg2rad(ALPHA0_DEG)
+    thruster axis (see the pipeline's plume-normal convention).
+
+    plate_center / alpha0_deg place the whole {plate + swept-arc} rig in the
+    global frame. They are physics-invariant (every relative incidence, and
+    thus every coefficient, is preserved under this rigid rotation +
+    translation) -- a flat alpha0 = 0 variant is a pure visualization
+    reframing of the same case. They must match the target STL's own
+    center/tilt (stl/transform_inclined_plate.py) and the analysis constants
+    (tests/rpod/rpod_verification_test_06.py)."""
+    a0 = np.deg2rad(alpha0_deg)
     n_hat = np.array([-np.sin(a0), 0.0, np.cos(a0)])
     t_hat = np.array([np.cos(a0), 0.0, np.sin(a0)])
     alpha = np.deg2rad(alpha_deg)
     d_hat = np.cos(alpha) * n_hat + np.sin(alpha) * t_hat
-    position = PLATE_CENTER + L * d_hat
+    position = np.asarray(plate_center, dtype=float) + L * d_hat
     axis = -d_hat                       # aimed at the plate center
     # right-handed triad; the axis always lies in the X-Z plane, so the
     # global Y axis is a valid second column
@@ -66,12 +74,28 @@ def dcm_string(dcm):
 
 
 if __name__ == '__main__':
+    import argparse
+
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument('--alpha0-deg', type=float, default=ALPHA0_DEG,
+                        help='global-frame plate tilt (deg); physics-'
+                             'invariant, must match the target STL')
+    parser.add_argument('--distance', type=float, default=PLATE_CENTER[0],
+                        help='plate-center X in the global frame (m); the '
+                             'center is (distance, 0, 0)')
+    parser.add_argument('--out', type=str, default=OUT_NAME,
+                        help='output JFH filename in this jfh/ folder')
+    args = parser.parse_args()
+
+    plate_center = np.array([args.distance, 0.0, 0.0])
     firings = []
     for L in L_OVER_D:
         for alpha_deg in ALPHAS_DEG:
-            position, dcm = pose_for(alpha_deg, L)
+            position, dcm = pose_for(alpha_deg, L, plate_center=plate_center,
+                                     alpha0_deg=args.alpha0_deg)
             firings.append((0.0, 1.0, dcm_string(dcm), tuple(position), [1]))
-    out_path = Path(__file__).resolve().parent / OUT_NAME
+    out_path = Path(__file__).resolve().parent / args.out
     write_jfh(out_path, firings)
     print(f'saved {out_path} ({len(firings)} firings: '
-          f'{len(ALPHAS_DEG)} angles x {len(L_OVER_D)} distances)')
+          f'{len(ALPHAS_DEG)} angles x {len(L_OVER_D)} distances, '
+          f'alpha0 = {args.alpha0_deg} deg, center X = {args.distance} m)')
